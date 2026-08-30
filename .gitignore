@@ -1,0 +1,26 @@
+# ROS 2 / colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Local environments and editor state
+.venv/
+venv/
+env/
+.vscode/
+.idea/
+
+# Runtime output
+MUJOCO_LOG.TXT
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db

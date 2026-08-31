@@ -2,6 +2,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -12,12 +13,44 @@ def generate_launch_description():
                 default_value="",
                 description="Optional absolute or relative path to a MuJoCo XML scene.",
             ),
+            DeclareLaunchArgument(
+                "camera_enabled",
+                default_value="true",
+                description="Enable wrist-camera rendering and ROS image publication.",
+            ),
+            DeclareLaunchArgument(
+                "camera_width", default_value="640", description="Published image width."
+            ),
+            DeclareLaunchArgument(
+                "camera_height", default_value="480", description="Published image height."
+            ),
+            DeclareLaunchArgument(
+                "camera_publish_rate",
+                default_value="30.0",
+                description="Wrist-camera publication rate in simulation-time Hz.",
+            ),
             Node(
                 package="so101_mujoco_sim",
                 executable="so101_mujoco_viewer",
                 name="so101_mujoco_viewer",
                 output="screen",
-                parameters=[{"model_path": LaunchConfiguration("model_path")}],
+                parameters=[
+                    {
+                        "model_path": LaunchConfiguration("model_path"),
+                        "camera_enabled": ParameterValue(
+                            LaunchConfiguration("camera_enabled"), value_type=bool
+                        ),
+                        "camera_width": ParameterValue(
+                            LaunchConfiguration("camera_width"), value_type=int
+                        ),
+                        "camera_height": ParameterValue(
+                            LaunchConfiguration("camera_height"), value_type=int
+                        ),
+                        "camera_publish_rate": ParameterValue(
+                            LaunchConfiguration("camera_publish_rate"), value_type=float
+                        ),
+                    }
+                ],
             ),
         ]
     )

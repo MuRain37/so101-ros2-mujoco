@@ -1,7 +1,8 @@
 Third-party model notice
 
 SO-101 robot assets are derived from TheRobotStudio/SO-ARM100.
-The three gripper collision meshes and manipulation collision layout are adapted
+The three gripper collision meshes, wrist-camera mount mesh, and associated
+manipulation/camera layout are adapted
 from google-deepmind/mujoco_menagerie/robotstudio_so101.
 The simple wood table geometry is adapted from vikashplus/furniture_sim.
 All three sources are distributed under the Apache License 2.0 reproduced below.

@@ -35,7 +35,6 @@ class SO101MujocoViewer(Node):
         self.declare_parameter("state_publish_rate", 50.0)
         self.declare_parameter("realtime_factor", 1.0)
         self.declare_parameter("max_substeps", 20)
-        self.declare_parameter("viewer_sync_rate", 60.0)
         self._wrist_camera = create_wrist_camera(self)
         self._global_d435 = create_global_d435(self)
 
@@ -214,9 +213,6 @@ class SO101MujocoViewer(Node):
             raise ValueError("realtime_factor must be greater than zero")
         if max_substeps < 1:
             raise ValueError("max_substeps must be at least one")
-        viewer_sync_rate = self.get_parameter("viewer_sync_rate").value
-        if viewer_sync_rate <= 0:
-            raise ValueError("viewer_sync_rate must be greater than zero")
         self.get_logger().info(
             f"loaded physics model ({model.njnt} joints, {model.nu} actuators, "
             f"timestep={timestep}s)"
@@ -235,8 +231,6 @@ class SO101MujocoViewer(Node):
                 self._randomize_cubes(mujoco, model, data, "startup")
                 native_viewer.sync()
                 last_sim_time = data.time
-                viewer_sync_period = 1.0 / viewer_sync_rate
-                last_viewer_sync = time.perf_counter()
                 while rclpy.ok() and native_viewer.is_running():
                     rclpy.spin_once(self, timeout_sec=0.001)
                     if data.time < last_sim_time:
@@ -264,9 +258,7 @@ class SO101MujocoViewer(Node):
                     self._wrist_camera.publish_if_due(self._data, self._sim_stamp)
                     self._global_d435.publish_if_due(self._data, self._sim_stamp)
                     last_sim_time = data.time
-                    if time.perf_counter() - last_viewer_sync >= viewer_sync_period:
-                        native_viewer.sync()
-                        last_viewer_sync = time.perf_counter()
+                    native_viewer.sync()
         finally:
             self._wrist_camera.close()
             self._global_d435.close()

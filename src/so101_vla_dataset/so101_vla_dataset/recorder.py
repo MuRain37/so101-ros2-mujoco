@@ -9,9 +9,15 @@ import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image, JointState
 from std_srvs.srv import Trigger
+
+CAMERA_QOS = QoSProfile(
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10,
+    reliability=ReliabilityPolicy.RELIABLE,
+)
 
 JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")
 
@@ -35,8 +41,8 @@ class SO101DatasetRecorder(Node):
         self._state_cache = deque(maxlen=100)
         self._action_cache = deque(maxlen=100)
         self._wrist_cache = deque(maxlen=10)
-        self.create_subscription(Image, self.get_parameter("front_topic").value, self._on_front, qos_profile_sensor_data)
-        self.create_subscription(Image, self.get_parameter("wrist_topic").value, self._on_wrist, qos_profile_sensor_data)
+        self.create_subscription(Image, self.get_parameter("front_topic").value, self._on_front, CAMERA_QOS)
+        self.create_subscription(Image, self.get_parameter("wrist_topic").value, self._on_wrist, CAMERA_QOS)
         self.create_subscription(JointState, self.get_parameter("state_topic").value, self._on_state, 50)
         self.create_subscription(JointState, self.get_parameter("action_topic").value, self._on_action, 50)
         self.create_service(Trigger, "dataset/start_episode", self._start_episode)

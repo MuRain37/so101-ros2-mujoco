@@ -2,8 +2,14 @@
 
 from math import radians, tan
 
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image
+
+CAMERA_QOS = QoSProfile(
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10,
+    reliability=ReliabilityPolicy.RELIABLE,
+)
 
 
 class MujocoCameraPublisher:
@@ -29,10 +35,6 @@ class MujocoCameraPublisher:
         self._label = label
         self._prefix = parameter_prefix
         self._depth_enabled = depth_enabled
-        depth_parameter = f"{parameter_prefix}_depth_enabled"
-        if depth_enabled:
-            node.declare_parameter(depth_parameter, False)
-
         node.declare_parameter(f"{parameter_prefix}_enabled", True)
         node.declare_parameter(f"{parameter_prefix}_name", camera_name)
         node.declare_parameter(f"{parameter_prefix}_frame_id", frame_id)
@@ -69,10 +71,6 @@ class MujocoCameraPublisher:
             self._node.get_logger().info(f"{self._label} rendering is disabled")
             return
 
-        depth_parameter = f"{self._prefix}_depth_enabled"
-        if self._depth_enabled and self._node.has_parameter(depth_parameter):
-            self._depth_enabled = bool(self._node.get_parameter(depth_parameter).value)
-
         self._model = model
         self._camera_name = self._string_parameter(f"{self._prefix}_name")
         self._frame_id = self._string_parameter(f"{self._prefix}_frame_id")
@@ -105,23 +103,23 @@ class MujocoCameraPublisher:
         self._color_publisher = self._node.create_publisher(
             Image,
             self._node.get_parameter(self._color_topic_parameter).value,
-            qos_profile_sensor_data,
+            CAMERA_QOS,
         )
         self._color_info_publisher = self._node.create_publisher(
             CameraInfo,
             self._node.get_parameter(self._color_info_topic_parameter).value,
-            qos_profile_sensor_data,
+            CAMERA_QOS,
         )
         if self._depth_enabled:
             self._depth_publisher = self._node.create_publisher(
                 Image,
                 self._node.get_parameter(f"{self._prefix}_depth_topic").value,
-                qos_profile_sensor_data,
+                CAMERA_QOS,
             )
             self._depth_info_publisher = self._node.create_publisher(
                 CameraInfo,
                 self._node.get_parameter(f"{self._prefix}_depth_info_topic").value,
-                qos_profile_sensor_data,
+                CAMERA_QOS,
             )
 
         self._publish_period = 1.0 / publish_rate

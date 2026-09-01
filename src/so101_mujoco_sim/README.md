@@ -62,8 +62,7 @@ The fixed D435 publishes aligned streams at 640 x 480 and 30 simulation-time Hz:
 ```
 
 All four messages use `global_d435_optical_frame` and the same MuJoCo timestamp.
-Use `d435_enabled:=false` to disable this renderer. Depth rendering is disabled by default;
-set `d435_depth_enabled:=true` when aligned depth is needed. You can also configure
+Use `d435_enabled:=false` to disable this renderer, or configure
 `d435_width`, `d435_height`, and `d435_publish_rate`. For example:
 
 ```bash

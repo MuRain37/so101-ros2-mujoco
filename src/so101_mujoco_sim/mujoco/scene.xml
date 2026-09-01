@@ -31,10 +31,22 @@
             markrgb="0.8 0.8 0.8" width="300" height="300" />
         <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5"
             reflectance="0.2" />
+        <!-- Merged Intel RealSense D435 visual model from MuJoCo Menagerie. -->
+        <material name="d435_white" rgba="1 1 1 1" specular="0" shininess="0.25" />
+        <mesh name="d435" file="d435.stl" />
     </asset>
 
     <worldbody>
         <include file="simple_table.xml" />
+        <!-- Suspended global D435: front face points down and back at the workspace. -->
+        <body name="global_d435" pos="0.45 0 0.65"
+            xyaxes="0 1 0 0.8 0 -0.6">
+            <geom type="mesh" mesh="d435" material="d435_white" group="2"
+                contype="0" conaffinity="0" />
+            <!-- MuJoCo cameras look along local -Z; this points through the D435 front. -->
+            <camera name="global_d435_camera" pos="0.0325 0 0"
+                xyaxes="-1 0 0 0 1 0" fovy="58" />
+        </body>
         <light pos="0 0 3.5" dir="0 0 -1" directional="true" />
         <geom name="floor" size="0 0 0.05" pos="0 0 -0.76" type="plane" material="groundplane" />
         <geom name="red_place_target" type="box" pos="0.25 -0.16 0.0005"

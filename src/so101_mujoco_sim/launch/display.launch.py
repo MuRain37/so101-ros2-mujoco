@@ -29,6 +29,14 @@ def generate_launch_description():
                 default_value="30.0",
                 description="Wrist-camera publication rate in simulation-time Hz.",
             ),
+            DeclareLaunchArgument(
+                "d435_enabled",
+                default_value="true",
+                description="Enable global D435 aligned RGB-D publication.",
+            ),
+            DeclareLaunchArgument("d435_width", default_value="640"),
+            DeclareLaunchArgument("d435_height", default_value="480"),
+            DeclareLaunchArgument("d435_publish_rate", default_value="30.0"),
             Node(
                 package="so101_mujoco_sim",
                 executable="so101_mujoco_viewer",
@@ -48,6 +56,18 @@ def generate_launch_description():
                         ),
                         "camera_publish_rate": ParameterValue(
                             LaunchConfiguration("camera_publish_rate"), value_type=float
+                        ),
+                        "d435_enabled": ParameterValue(
+                            LaunchConfiguration("d435_enabled"), value_type=bool
+                        ),
+                        "d435_width": ParameterValue(
+                            LaunchConfiguration("d435_width"), value_type=int
+                        ),
+                        "d435_height": ParameterValue(
+                            LaunchConfiguration("d435_height"), value_type=int
+                        ),
+                        "d435_publish_rate": ParameterValue(
+                            LaunchConfiguration("d435_publish_rate"), value_type=float
                         ),
                     }
                 ],

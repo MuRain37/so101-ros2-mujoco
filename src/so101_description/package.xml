@@ -3,7 +3,7 @@
 <package format="3">
   <name>so101_description</name>
   <version>0.1.0</version>
-  <description>URDF description and RViz display for the SO-101 leader arm</description>
+  <description>Shared robot-cell descriptions, meshes, and RViz resources.</description>
   <maintainer email="murain@example.com">murain</maintainer>
   <license>Apache-2.0</license>
 

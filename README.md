@@ -6,7 +6,7 @@ cubes, and matching placement areas.
 
 ## Packages
 
-- `so101_description`: shared URDF, meshes, and RViz configuration.
+- `so101_description`: shared workcell URDF, meshes, sensor models, and RViz configuration.
 - `so101_leader_bridge`: publishes a physical SO-101 leader arm as ROS joint states.
 - `so101_mujoco_sim`: MuJoCo model with a wrist camera, physics viewer, and ROS joint control.
 - `so101_bringup`: launch files composing the packages.

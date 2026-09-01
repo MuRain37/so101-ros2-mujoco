@@ -28,6 +28,12 @@ To load another self-contained MJCF scene, provide `model_path`:
 ros2 launch so101_mujoco_sim display.launch.py model_path:=/path/to/scene.xml
 ```
 
+The red and blue cubes are randomized at every startup. Their centre positions
+use a centred `0.18 m x 0.18 m` square inset from the space between the
+placement targets: `x=[0.16, 0.34]` m and `y=[-0.09, 0.09]` m. These ranges
+and the 1 cm edge-to-edge gap are constants in `cube_randomizer.py`. The sampler uses
+each cube's MuJoCo box size to ensure the cubes cannot overlap.
+
 The viewer needs a desktop OpenGL session. It always advances MuJoCo physics at
 the model's fixed 2 ms step, publishes `/clock` and `/sim/joint_states`, and
 contains a wooden table, the SO-101 on its tabletop, a free 24 mm-wide red cube and blue cube, plus non-colliding red and blue
@@ -35,6 +41,10 @@ placement targets. The follower carries the Menagerie wrist-camera mount and an 
 
 The scene also contains a suspended global Intel RealSense D435 visual model,
 positioned above the front of the table and aimed at the manipulation workspace.
+It is held by a non-colliding table-mounted stand with a base, rear post, boom,
+and fitted cradle. The structure follows the modular layout of the
+[open-source SO-100/101 overhead camera mount](https://github.com/TheRobotStudio/SO-ARM100/tree/main/Optional/Overhead_Cam_Mount_Webcam),
+while its dimensions are adapted to this scene's fixed D435 pose and enclosure.
 It is a single white STL merged from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/realsense_d435i)
 visual meshes, is Apache-2.0 licensed, and has no collision geometry. A virtual
 camera inside the body publishes aligned RGB-D images. The bundled license is installed by the
@@ -52,7 +62,8 @@ The fixed D435 publishes aligned streams at 640 x 480 and 30 simulation-time Hz:
 ```
 
 All four messages use `global_d435_optical_frame` and the same MuJoCo timestamp.
-Use `d435_enabled:=false` to disable this renderer, or configure
+Use `d435_enabled:=false` to disable this renderer. Depth rendering is disabled by default;
+set `d435_depth_enabled:=true` when aligned depth is needed. You can also configure
 `d435_width`, `d435_height`, and `d435_publish_rate`. For example:
 
 ```bash
@@ -85,8 +96,10 @@ ros2 topic echo /wrist_cam/camera_info --once
 
 The viewer receives a `sensor_msgs/JointState` target, clamps it to the joint
 limits, and writes it to the MuJoCo position-actuator controls. The published
-`/sim/joint_states` topic reports the post-physics pose, which can differ from
-the leader target during contact.
+`/sim/action` topic reports the target values actually written to the MuJoCo
+controls, while `/sim/joint_states` reports the post-physics pose, which can
+differ from the target during PD response or contact. Both messages use the same
+simulation timestamp.
 
 ```bash
 ros2 run so101_mujoco_sim so101_mujoco_viewer \

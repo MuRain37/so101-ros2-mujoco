@@ -57,6 +57,7 @@ def generate_launch_description():
                 default_value="true",
                 description="Enable global D435 aligned RGB-D publication.",
             ),
+            DeclareLaunchArgument("d435_depth_enabled", default_value="false", description="Enable global D435 depth rendering."),
             DeclareLaunchArgument("d435_width", default_value="640"),
             DeclareLaunchArgument("d435_height", default_value="480"),
             DeclareLaunchArgument("d435_publish_rate", default_value="30.0"),
@@ -97,6 +98,9 @@ def generate_launch_description():
                         "d435_enabled": ParameterValue(
                             LaunchConfiguration("d435_enabled"), value_type=bool
                         ),
+                        "d435_depth_enabled": ParameterValue(
+                            LaunchConfiguration("d435_depth_enabled"), value_type=bool
+                        ),
                         "d435_width": ParameterValue(
                             LaunchConfiguration("d435_width"), value_type=int
                         ),
@@ -108,6 +112,12 @@ def generate_launch_description():
                         ),
                     }
                 ],
+            ),
+            Node(
+                package="so101_vla_dataset",
+                executable="so101_dataset_recorder",
+                name="so101_dataset_recorder",
+                output="screen",
             ),
         ]
     )

@@ -18,6 +18,7 @@ env/
 .idea/
 
 # Runtime output
+data/
 MUJOCO_LOG.TXT
 *.log
 

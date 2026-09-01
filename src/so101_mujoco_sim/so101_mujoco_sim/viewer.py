@@ -11,6 +11,7 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
 
 from .camera import create_global_d435, create_wrist_camera
+from .cube_randomizer import randomize_cube_positions
 
 
 JOINTS = (
@@ -34,6 +35,7 @@ class SO101MujocoViewer(Node):
         self.declare_parameter("state_publish_rate", 50.0)
         self.declare_parameter("realtime_factor", 1.0)
         self.declare_parameter("max_substeps", 20)
+        self.declare_parameter("viewer_sync_rate", 60.0)
         self._wrist_camera = create_wrist_camera(self)
         self._global_d435 = create_global_d435(self)
 
@@ -42,6 +44,7 @@ class SO101MujocoViewer(Node):
         self._target_subscription = self.create_subscription(
             JointState, input_topic, self._on_joint_state, 10
         )
+        self._action_publisher = self.create_publisher(JointState, "sim/action", 10)
         self._state_publisher = self.create_publisher(JointState, output_topic, 10)
         self._clock_publisher = self.create_publisher(Clock, "/clock", 10)
 
@@ -155,7 +158,30 @@ class SO101MujocoViewer(Node):
             float(self._data.qpos[self._joint_qpos_addresses[name][1]]) for name in JOINTS
         ]
         self._state_publisher.publish(message)
+
+        action = JointState()
+        action.header.stamp.sec = sec
+        action.header.stamp.nanosec = nanosec
+        action.name = list(JOINTS)
+        action.position = [
+            float(self._data.ctrl[self._actuator_ids[name]]) for name in JOINTS
+        ]
+        self._action_publisher.publish(action)
         self._last_state_publish_time = self._data.time
+
+    def _randomize_cubes(self, mujoco, model, data, reason: str) -> None:
+        """Randomize cube positions and immediately refresh MuJoCo state."""
+        positions = randomize_cube_positions(model, data)
+        mujoco.mj_forward(model, data)
+        self._last_state_publish_time = float("-inf")
+        self.get_logger().info(
+            f"{reason}: randomized cubes: "
+            + ", ".join(
+                f"{name}=({position[0]:.3f}, {position[1]:.3f}, "
+                f"{position[2]:.3f})"
+                for name, position in positions.items()
+            )
+        )
 
     def run(self) -> None:
         """Load the physics scene and advance it in real time until Viewer closes."""
@@ -188,6 +214,9 @@ class SO101MujocoViewer(Node):
             raise ValueError("realtime_factor must be greater than zero")
         if max_substeps < 1:
             raise ValueError("max_substeps must be at least one")
+        viewer_sync_rate = self.get_parameter("viewer_sync_rate").value
+        if viewer_sync_rate <= 0:
+            raise ValueError("viewer_sync_rate must be greater than zero")
         self.get_logger().info(
             f"loaded physics model ({model.njnt} joints, {model.nu} actuators, "
             f"timestep={timestep}s)"
@@ -203,8 +232,18 @@ class SO101MujocoViewer(Node):
         last_wall_time = time.perf_counter()
         try:
             with mujoco.viewer.launch_passive(model, data) as native_viewer:
+                self._randomize_cubes(mujoco, model, data, "startup")
+                native_viewer.sync()
+                last_sim_time = data.time
+                viewer_sync_period = 1.0 / viewer_sync_rate
+                last_viewer_sync = time.perf_counter()
                 while rclpy.ok() and native_viewer.is_running():
                     rclpy.spin_once(self, timeout_sec=0.001)
+                    if data.time < last_sim_time:
+                        self._randomize_cubes(mujoco, model, data, "reset")
+                        accumulator = 0.0
+                        last_wall_time = time.perf_counter()
+
                     now = time.perf_counter()
                     accumulator += (now - last_wall_time) * realtime_factor
                     last_wall_time = now
@@ -224,7 +263,10 @@ class SO101MujocoViewer(Node):
                     self._publish_simulated_state()
                     self._wrist_camera.publish_if_due(self._data, self._sim_stamp)
                     self._global_d435.publish_if_due(self._data, self._sim_stamp)
-                    native_viewer.sync()
+                    last_sim_time = data.time
+                    if time.perf_counter() - last_viewer_sync >= viewer_sync_period:
+                        native_viewer.sync()
+                        last_viewer_sync = time.perf_counter()
         finally:
             self._wrist_camera.close()
             self._global_d435.close()

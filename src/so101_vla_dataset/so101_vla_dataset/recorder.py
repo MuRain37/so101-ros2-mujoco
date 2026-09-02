@@ -3,12 +3,14 @@
 
 import json
 import signal
+import shutil
 import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 
 import rclpy
+from so101_mujoco_sim.tasks import create_task
 import rosbag2_py
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -34,8 +36,8 @@ class SO101DatasetRecorder(Node):
     def __init__(self) -> None:
         super().__init__("so101_dataset_recorder")
         self.declare_parameter("output_dir", "dataset/raw")
-        self.declare_parameter("task", "把红色方块放到红色区域")
         self.declare_parameter("task_id", "red_cube_to_red_target")
+        self._task = create_task(str(self.get_parameter("task_id").value))
         self.declare_parameter("bag_topics", list(DEFAULT_BAG_TOPICS))
         self.declare_parameter("startup_timeout", 5.0)
         self.declare_parameter("minimum_camera_rate", 27.0)
@@ -46,6 +48,7 @@ class SO101DatasetRecorder(Node):
         self._reset_client = self.create_client(Trigger, "/sim/reset_task")
         self.create_service(Trigger, "dataset/start_episode", self._start_episode)
         self.create_service(Trigger, "dataset/stop_episode", self._stop_episode)
+        self.create_service(Trigger, "dataset/cancel_episode", self._cancel_episode)
         self.get_logger().info("ready; call /dataset/start_episode to begin recording")
 
     def _next_episode_dir(self, root: Path) -> Path:
@@ -111,7 +114,7 @@ class SO101DatasetRecorder(Node):
             "episode_id": episode_dir.name.removeprefix("episode_"),
             "recorded_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "task_id": self.get_parameter("task_id").value,
-            "task": self.get_parameter("task").value,
+            "task": self._task.language_instruction,
             "format": "rosbag2_mcap",
             "topics": topics,
             "status": "recording",
@@ -214,6 +217,33 @@ class SO101DatasetRecorder(Node):
             return
         log = self.get_logger().info if response.success else self.get_logger().error
         log(response.message)
+
+    def _cancel_episode(self, request, response):
+        del request
+        if self._process is None:
+            response.success = False
+            response.message = "no episode is recording"
+            return response
+
+        episode_dir = self._episode_dir
+        self._stop_process()
+        self._process = None
+        self._episode_dir = None
+        self._bag_dir = None
+        self._manifest = None
+        try:
+            shutil.rmtree(episode_dir)
+        except OSError as error:
+            response.success = False
+            response.message = f"recording stopped but episode cleanup failed: {error}"
+            self._request_task_reset()
+            return response
+
+        self._request_task_reset()
+        response.success = True
+        response.message = f"discarded episode {episode_dir}"
+        return response
+
 
     def _stop_episode(self, request, response):
         del request

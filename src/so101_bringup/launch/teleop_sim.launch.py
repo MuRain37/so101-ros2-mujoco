@@ -42,7 +42,6 @@ def generate_launch_description():
                 description="Leader-arm serial polling rate in Hz.",
             ),
             DeclareLaunchArgument("dataset_output_dir", default_value="dataset/raw"),
-            DeclareLaunchArgument("dataset_task", default_value="把红色方块放到红色区域"),
             DeclareLaunchArgument(
                 "dataset_task_id", default_value="red_cube_to_red_target"
             ),
@@ -78,7 +77,6 @@ def generate_launch_description():
                 parameters=[
                     {
                         "output_dir": LaunchConfiguration("dataset_output_dir"),
-                        "task": LaunchConfiguration("dataset_task"),
                         "task_id": LaunchConfiguration("dataset_task_id"),
                     }
                 ],
@@ -89,7 +87,6 @@ def generate_launch_description():
                 name="so101_dataset_gui",
                 output="screen",
                 condition=IfCondition(LaunchConfiguration("dataset_gui_enabled")),
-                parameters=[{"task": LaunchConfiguration("dataset_task")}],
             ),
         ]
     )

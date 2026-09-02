@@ -14,14 +14,11 @@ from python_qt_binding.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QLineEdit,
     QShortcut,
     QVBoxLayout,
     QWidget,
 )
-from rcl_interfaces.srv import SetParameters
 from rclpy.node import Node
-from rclpy.parameter import Parameter
 from std_srvs.srv import Trigger
 
 
@@ -30,12 +27,9 @@ class DatasetGuiNode(Node):
 
     def __init__(self) -> None:
         super().__init__("so101_dataset_gui")
-        self.declare_parameter("task", "把红色方块放到红色区域")
         self.start_client = self.create_client(Trigger, "/dataset/start_episode")
         self.stop_client = self.create_client(Trigger, "/dataset/stop_episode")
-        self.task_client = self.create_client(
-            SetParameters, "/so101_dataset_recorder/set_parameters"
-        )
+        self.cancel_client = self.create_client(Trigger, "/dataset/cancel_episode")
 
     def bag_is_running(self) -> bool:
         return any(
@@ -69,29 +63,30 @@ class DatasetControlWindow(QWidget):
         self._detail = QLabel("可以先调整机械臂，再开始录制。")
         self._detail.setWordWrap(True)
         self._elapsed = QLabel("录制时长：00:00:00")
-        self._task_input = QLineEdit(str(node.get_parameter("task").value))
 
         self._start_button = QPushButton("开始录制 (R)")
         self._stop_button = QPushButton("停止录制 (S)")
+        self._cancel_button = QPushButton("取消录制 (Space)")
         self._start_button.clicked.connect(self._start_recording)
         self._stop_button.clicked.connect(self._stop_recording)
+        self._cancel_button.clicked.connect(self._cancel_recording)
         self._start_button.setEnabled(False)
         self._stop_button.setEnabled(False)
+        self._cancel_button.setEnabled(False)
         self._start_shortcut = QShortcut(QKeySequence("R"), self)
         self._stop_shortcut = QShortcut(QKeySequence("S"), self)
+        self._cancel_shortcut = QShortcut(QKeySequence("Space"), self)
         self._start_shortcut.activated.connect(self._start_from_shortcut)
         self._stop_shortcut.activated.connect(self._stop_recording)
+        self._cancel_shortcut.activated.connect(self._cancel_recording)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._start_button)
         buttons.addWidget(self._stop_button)
+        buttons.addWidget(self._cancel_button)
         layout = QVBoxLayout(self)
         layout.addWidget(self._status)
         layout.addWidget(self._detail)
-        task_row = QHBoxLayout()
-        task_row.addWidget(QLabel("任务指令："))
-        task_row.addWidget(self._task_input)
-        layout.addLayout(task_row)
         layout.addWidget(self._elapsed)
         layout.addLayout(buttons)
 
@@ -119,14 +114,14 @@ class DatasetControlWindow(QWidget):
         ready = (
             self._node.start_client.service_is_ready()
             and self._node.stop_client.service_is_ready()
-            and self._node.task_client.service_is_ready()
+            and self._node.cancel_client.service_is_ready()
         )
         if not ready:
             if self._future is None:
                 self._set_state("等待录制服务", "录制服务尚未就绪。")
             self._start_button.setEnabled(False)
             self._stop_button.setEnabled(False)
-            self._task_input.setEnabled(False)
+            self._cancel_button.setEnabled(False)
             return
 
         bag_running = self._node.bag_is_running()
@@ -135,45 +130,38 @@ class DatasetControlWindow(QWidget):
         elif not bag_running and self._bag_running and self._future is None:
             self._stop_elapsed()
         self._bag_running = bag_running
-        self._task_input.setEnabled(self._future is None and not bag_running)
         if self._future is not None:
             self._start_button.setEnabled(False)
             self._stop_button.setEnabled(False)
+            self._cancel_button.setEnabled(False)
             return
 
         self._start_button.setEnabled(not self._bag_running)
         self._stop_button.setEnabled(self._bag_running)
+        self._cancel_button.setEnabled(self._bag_running)
         if self._bag_running and self._status.text() not in ("录制中", "停止失败"):
             self._set_state("录制中", "检测到数据集 rosbag 正在录制。")
         elif not self._bag_running and self._status.text() in (
             "正在等待录制服务…",
             "等待录制服务",
-            "录制中",
         ):
             self._set_state("空闲", "可以先调整机械臂，再开始录制。")
 
     def _start_from_shortcut(self) -> None:
-        if not self._task_input.hasFocus():
-            self._start_recording()
+        self._start_recording()
 
     def _start_recording(self) -> None:
         if self._future is not None or not self._start_button.isEnabled():
             return
-        task = self._task_input.text().strip()
-        if not task:
-            self._set_state("启动失败", "任务指令不能为空。")
-            return
         self._elapsed_seconds = 0.0
         self._recording_started_at = None
         self._update_elapsed()
-        self._action = "set_task"
-        self._set_state("正在启动录制…", "正在保存任务指令。")
+        self._action = "start"
+        self._set_state("正在启动录制…", "正在检查话题并启动 rosbag。")
         self._start_button.setEnabled(False)
         self._stop_button.setEnabled(False)
-        self._task_input.setEnabled(False)
-        request = SetParameters.Request()
-        request.parameters = [Parameter("task", value=task).to_parameter_msg()]
-        self._future = self._node.task_client.call_async(request)
+        self._cancel_button.setEnabled(False)
+        self._future = self._node.start_client.call_async(Trigger.Request())
 
     def _stop_recording(self) -> None:
         if self._future is not None or not self._stop_button.isEnabled():
@@ -182,7 +170,18 @@ class DatasetControlWindow(QWidget):
         self._set_state("正在停止录制…", "正在安全写盘并验证数据，请稍候。")
         self._start_button.setEnabled(False)
         self._stop_button.setEnabled(False)
+        self._cancel_button.setEnabled(False)
         self._future = self._node.stop_client.call_async(Trigger.Request())
+
+    def _cancel_recording(self) -> None:
+        if self._future is not None or not self._cancel_button.isEnabled():
+            return
+        self._action = "cancel"
+        self._set_state("正在取消录制…", "正在删除本次未完成的数据。")
+        self._start_button.setEnabled(False)
+        self._stop_button.setEnabled(False)
+        self._cancel_button.setEnabled(False)
+        self._future = self._node.cancel_client.call_async(Trigger.Request())
 
     def _finish_request(self) -> None:
         future = self._future
@@ -197,16 +196,6 @@ class DatasetControlWindow(QWidget):
             self._refresh_availability()
             return
 
-        if action == "set_task":
-            if not response.results or not response.results[0].successful:
-                reason = response.results[0].reason if response.results else "未知错误"
-                self._set_state("启动失败", f"任务指令保存失败：{reason}")
-                self._refresh_availability()
-                return
-            self._action = "start"
-            self._set_state("正在启动录制…", "正在检查话题并启动 rosbag。")
-            self._future = self._node.start_client.call_async(Trigger.Request())
-            return
 
         if action == "start":
             self._bag_running = response.success
@@ -217,7 +206,10 @@ class DatasetControlWindow(QWidget):
             self._bag_running = not response.success and self._node.bag_is_running()
             if not self._bag_running:
                 self._stop_elapsed()
-            self._set_state("录制完成" if response.success else "停止失败", response.message)
+            if action == "cancel":
+                self._set_state("已取消" if response.success else "取消失败", response.message)
+            else:
+                self._set_state("录制完成" if response.success else "停止失败", response.message)
 
         if action == "stop" and response.success and self._close_after_stop:
             self._allow_close = True
@@ -247,7 +239,7 @@ class DatasetControlWindow(QWidget):
         self._elapsed.setText(f"录制时长：{hours:02d}:{minutes:02d}:{seconds:02d}")
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        starting = self._action in ("set_task", "start")
+        starting = self._action == "start"
         if self._allow_close or not (self._bag_running or starting):
             event.accept()
             return

@@ -1,0 +1,97 @@
+<mujoco model="scene">
+    <!-- MuJoCo resolves meshes from the top-level scene compiler. -->
+    <compiler meshdir="../../../so101_description/meshes" />
+    <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81" />
+    <include file="../arms/so101_arm.xml" />
+
+    <default>
+        <default class="table_visual">
+            <geom contype="0" conaffinity="0" group="2" material="table_wood" />
+        </default>
+        <default class="table_collision">
+            <geom group="3" rgba="0 0 0 0" />
+        </default>
+    </default>
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+        <rgba haze="0.15 0.25 0.35 1" />
+        <global azimuth="160" elevation="-20" />
+    </visual>
+
+    <asset>
+        <texture type="2d" name="tablewood" builtin="checker" rgb1="0.34 0.16 0.06"
+            rgb2="0.18 0.07 0.025" width="512" height="512" />
+        <material name="table_wood" texture="tablewood" texuniform="true" texrepeat="4 2"
+            reflectance="0.08" />
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512"
+            height="3072" />
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+            rgb2="0.1 0.2 0.3"
+            markrgb="0.8 0.8 0.8" width="300" height="300" />
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5"
+            reflectance="0.2" />
+        <!-- Merged Intel RealSense D435 visual model from MuJoCo Menagerie. -->
+        <material name="d435_white" rgba="1 1 1 1" specular="0" shininess="0.25" />
+        <material name="camera_stand_black" rgba="0.08 0.09 0.1 1"
+            specular="0.15" shininess="0.35" />
+        <mesh name="d435" file="d435.stl" />
+    </asset>
+
+    <worldbody>
+        <include file="../environments/simple_table.xml" />
+        <!-- Table-mounted overhead stand sized for the fixed D435 pose below. -->
+        <body name="global_d435_stand">
+            <geom name="d435_stand_base" type="box" pos="0.56 0 0.012"
+                size="0.04 0.065 0.012" material="camera_stand_black"
+                group="2" contype="0" conaffinity="0" />
+            <geom name="d435_stand_post" type="capsule"
+                fromto="0.57 0 0.024 0.57 0 0.67" size="0.012"
+                material="camera_stand_black" group="2"
+                contype="0" conaffinity="0" />
+            <geom name="d435_stand_boom" type="cylinder"
+                fromto="0.57 0 0.67 0.467 0 0.672" size="0.012"
+                material="camera_stand_black" group="2"
+                contype="0" conaffinity="0" />
+        </body>
+        <!-- Suspended global D435: front face points down and back at the workspace. -->
+        <body name="global_d435" pos="0.45 0 0.65"
+            xyaxes="0 1 0 0.8 0 -0.6">
+            <!-- Rear plate and top/bottom rails leave the local +Z sensor face open. -->
+            <geom name="d435_cradle_back" type="box" pos="0 0 -0.028"
+                size="0.05 0.017 0.003" material="camera_stand_black"
+                group="2" contype="0" conaffinity="0" />
+            <geom name="d435_cradle_top" type="box" pos="0 0.016 -0.0125"
+                size="0.05 0.0035 0.016" material="camera_stand_black"
+                group="2" contype="0" conaffinity="0" />
+            <geom name="d435_cradle_bottom" type="box" pos="0 -0.016 -0.0125"
+                size="0.05 0.0035 0.016" material="camera_stand_black"
+                group="2" contype="0" conaffinity="0" />
+            <geom type="mesh" mesh="d435" material="d435_white" group="2"
+                contype="0" conaffinity="0" />
+            <!-- MuJoCo cameras look along local -Z; this points through the D435 front. -->
+            <camera name="global_d435_camera" pos="0.0325 0 0"
+                xyaxes="-1 0 0 0 1 0" fovy="58" />
+        </body>
+        <light pos="0 0 3.5" dir="0 0 -1" directional="true" />
+        <geom name="floor" size="0 0 0.05" pos="0 0 -0.76" type="plane" material="groundplane" />
+        <site name="cube_spawn_area" type="box" pos="0.25 0 0.001"
+            size="0.045 0.045 0.001" rgba="0 0 0 0" />
+        <geom name="red_place_target" type="box" pos="0.25 -0.16 0.0005"
+            size="0.045 0.045 0.0005" rgba="1 0.1 0.1 0.65"
+            contype="0" conaffinity="0" group="2" />
+        <geom name="blue_place_target" type="box" pos="0.25 0.16 0.0005"
+            size="0.045 0.045 0.0005" rgba="0.1 0.3 1 0.65"
+            contype="0" conaffinity="0" group="2" />
+        <body name="red_cube" pos="0.25 0 0.013">
+            <freejoint name="red_cube_free" />
+            <geom name="red_cube_geom" type="box" size="0.012 0.012 0.012" mass="0.01"
+                rgba="1 0 0 1" />
+        </body>
+        <body name="blue_cube" pos="0.20 0.08 0.013">
+            <freejoint name="blue_cube_free" />
+            <geom name="blue_cube_geom" type="box" size="0.012 0.012 0.012" mass="0.01"
+                rgba="0.05 0.2 1 1" />
+        </body>
+    </worldbody>
+</mujoco>

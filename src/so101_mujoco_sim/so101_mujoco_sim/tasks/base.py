@@ -6,6 +6,7 @@ class SimulationTask:
 
     task_id = ""
     scene_file = ""
+    language_instruction = ""
 
     def reset(self, model, data, rng):
         raise NotImplementedError

@@ -5,6 +5,7 @@ from setuptools import find_packages, setup
 
 
 package_name = "so101_mujoco_sim"
+mujoco_xml_files = glob("mujoco/**/*.xml", recursive=True)
 
 
 setup(
@@ -21,7 +22,10 @@ setup(
             ],
         ),
         (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
-        (os.path.join("share", package_name, "mujoco"), glob("mujoco/*.xml")),
+        *(
+            (os.path.join("share", package_name, os.path.dirname(path)), [path])
+            for path in mujoco_xml_files
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

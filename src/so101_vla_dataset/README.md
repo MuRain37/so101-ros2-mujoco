@@ -1,10 +1,10 @@
 # SO-101 VLA dataset recorder
 
-保留原有的两个 ROS 2 服务，但内部使用 rosbag2 的 Zstd 无损压缩 MCAP 格式。启动
+提供开始、停止和取消三个 ROS 2 服务，但内部使用 rosbag2 的 Zstd 无损压缩 MCAP 格式。启动
 `teleop_sim` 后录制器节点和控制窗口会自动运行，默认不开始录制。窗口提供
 “开始录制”和“停止录制”两个按钮、录制计时，并显示服务返回的保存路径或错误。
-每次开始前可以在“任务指令”输入框中修改本次 Episode 的语言指令。
-按 `R` 可开始录制，按 `S` 可停止录制；按钮不可用时对应快捷键也不会执行。
+任务语言指令由仿真任务定义统一提供，不在 UI 中编辑。
+按 `R` 可开始录制，按 `S` 可停止录制，按空格可取消当前录制；按钮不可用时对应快捷键也不会执行。
 机械臂始终跟随主臂；开始和停止按钮只控制数据录制。可以在未录制状态下
 将机械臂调整到合适的安全起始姿态。
 
@@ -29,12 +29,13 @@ ros2 run so101_vla_dataset so101_dataset_gui
 ```bash
 ros2 service call /dataset/start_episode std_srvs/srv/Trigger "{}"
 ros2 service call /dataset/stop_episode std_srvs/srv/Trigger "{}"
+ros2 service call /dataset/cancel_episode std_srvs/srv/Trigger "{}"
 ```
 
 每次开始服务会在 `dataset/raw/episode_YYYYMMDD_HHMMSS/` 创建一个 rosbag 目录，并录制
 `/clock`、关节状态、动作、腕部 RGB、D435 RGB、D435 深度及对应的
-`CameraInfo`。可通过 `dataset_output_dir`、`dataset_task_id` 和 `dataset_task`
-启动参数修改输出目录、任务实现和语言描述。`episode.json` 会同时记录 `task_id`
+`CameraInfo`。可通过 `dataset_output_dir` 和 `dataset_task_id`
+启动参数修改输出目录和任务实现；语言描述由任务类提供。`episode.json` 会同时记录 `task_id`
 与语言指令；成功检测暂未启用。
 
 开始服务会先确认全部话题存在并确认 rosbag2 成功启动。停止服务会检查必要

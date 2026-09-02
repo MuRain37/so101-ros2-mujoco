@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the SO-101 MuJoCo physics scene in MuJoCo's native viewer."""
 
+import random
 import time
 from pathlib import Path
 
@@ -10,32 +11,26 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
+from std_srvs.srv import Trigger
 
 from .camera import create_global_d435, create_wrist_camera
-from .cube_randomizer import randomize_cube_positions
+from .simulation import JOINTS, MujocoSimulation
+from .tasks import create_task
 
 
-JOINTS = (
-    "shoulder_pan",
-    "shoulder_lift",
-    "elbow_flex",
-    "wrist_flex",
-    "wrist_roll",
-    "gripper",
-)
-
-
-class SO101MujocoViewer(Node):
+class SO101MujocoSimulator(Node):
     """Drive the SO-101 position actuators from ROS joint-state targets."""
 
     def __init__(self) -> None:
-        super().__init__("so101_mujoco_viewer")
+        super().__init__("so101_mujoco_simulator")
         self.declare_parameter("model_path", "")
         self.declare_parameter("joint_state_topic", "joint_states")
         self.declare_parameter("sim_joint_state_topic", "sim/joint_states")
         self.declare_parameter("state_publish_rate", 50.0)
         self.declare_parameter("realtime_factor", 1.0)
         self.declare_parameter("max_substeps", 20)
+        self.declare_parameter("random_seed", -1)
+        self.declare_parameter("task_id", "red_cube_to_red_target")
         self._wrist_camera = create_wrist_camera(self)
         self._global_d435 = create_global_d435(self)
 
@@ -48,12 +43,15 @@ class SO101MujocoViewer(Node):
         self._state_publisher = self.create_publisher(JointState, output_topic, 10)
         self._clock_publisher = self.create_publisher(Clock, "/clock", 10)
 
-        self._model = None
-        self._data = None
-        self._joint_qpos_addresses = {}
-        self._actuator_ids = {}
-        self._targets = {}
+        self._simulation = None
         self._last_state_publish_time = float("-inf")
+        seed = int(self.get_parameter("random_seed").value)
+        self._rng = random.Random(None if seed < 0 else seed)
+        self._task = create_task(str(self.get_parameter("task_id").value))
+        self._task_reset_requested = False
+        self._reset_service = self.create_service(
+            Trigger, "sim/reset_task", self._on_reset_task
+        )
         self.get_logger().info(
             f"receiving targets on '{input_topic}' and publishing simulated state on "
             f"'{output_topic}'"
@@ -72,11 +70,10 @@ class SO101MujocoViewer(Node):
             raise FileNotFoundError(f"MuJoCo model file does not exist: {path}")
         return path
 
-    @staticmethod
-    def default_model_path() -> Path:
-        """Return the installed default scene path."""
+    def default_model_path(self) -> Path:
+        """Return the selected task default scene path."""
         package_share = Path(get_package_share_directory("so101_mujoco_sim"))
-        return (package_share / "mujoco" / "scene.xml").resolve()
+        return (package_share / "mujoco" / self._task.scene_file).resolve()
 
     @staticmethod
     def default_model_assets() -> dict[str, bytes]:
@@ -89,47 +86,11 @@ class SO101MujocoViewer(Node):
 
         return assets
 
-    def _configure_model(self, model, data) -> None:
-        """Cache the qpos and actuator slots of every SO-101 joint."""
-        import mujoco
-
-        self._model = model
-        self._data = data
-        self._joint_qpos_addresses = {}
-        self._actuator_ids = {}
-        self._targets = {}
-
-        for name in JOINTS:
-            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
-            actuator_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
-            if joint_id < 0 or actuator_id < 0:
-                continue
-            qpos_address = model.jnt_qposadr[joint_id]
-            self._joint_qpos_addresses[name] = (joint_id, qpos_address)
-            self._actuator_ids[name] = actuator_id
-            self._targets[name] = data.qpos[qpos_address]
-
-        missing = set(JOINTS) - set(self._targets)
-        if missing:
-            raise ValueError(f"model is missing joint or actuator definitions: {sorted(missing)}")
-
     def _on_joint_state(self, message: JointState) -> None:
         """Store the latest leader pose as PD actuator targets, never as qpos."""
-        if self._model is None:
+        if self._simulation is None:
             return
-
-        for name, position in zip(message.name, message.position):
-            joint = self._joint_qpos_addresses.get(name)
-            if joint is None:
-                continue
-            joint_id, _ = joint
-            lower, upper = self._model.jnt_range[joint_id]
-            self._targets[name] = min(upper, max(lower, position))
-
-    def _apply_targets(self) -> None:
-        """Copy the most recent leader pose into MuJoCo position controls."""
-        for name, target in self._targets.items():
-            self._data.ctrl[self._actuator_ids[name]] = target
+        self._simulation.set_targets(message.name, message.position)
 
     @staticmethod
     def _sim_stamp(sim_time: float):
@@ -139,7 +100,8 @@ class SO101MujocoViewer(Node):
 
     def _publish_simulated_state(self) -> None:
         """Publish actual post-physics joint positions and MuJoCo simulation time."""
-        sec, nanosec = self._sim_stamp(self._data.time)
+        simulation = self._simulation
+        sec, nanosec = self._sim_stamp(simulation.data.time)
 
         clock = Clock()
         clock.clock.sec = sec
@@ -147,41 +109,44 @@ class SO101MujocoViewer(Node):
         self._clock_publisher.publish(clock)
 
         publish_rate = self.get_parameter("state_publish_rate").value
-        if publish_rate <= 0 or self._data.time - self._last_state_publish_time < 1.0 / publish_rate:
+        if (
+            publish_rate <= 0
+            or simulation.data.time - self._last_state_publish_time < 1.0 / publish_rate
+        ):
             return
 
         message = JointState()
         message.header.stamp.sec = sec
         message.header.stamp.nanosec = nanosec
         message.name = list(JOINTS)
-        message.position = [
-            float(self._data.qpos[self._joint_qpos_addresses[name][1]]) for name in JOINTS
-        ]
+        message.position = simulation.joint_positions()
         self._state_publisher.publish(message)
 
         action = JointState()
         action.header.stamp.sec = sec
         action.header.stamp.nanosec = nanosec
         action.name = list(JOINTS)
-        action.position = [
-            float(self._data.ctrl[self._actuator_ids[name]]) for name in JOINTS
-        ]
+        action.position = simulation.action_positions()
         self._action_publisher.publish(action)
-        self._last_state_publish_time = self._data.time
+        self._last_state_publish_time = simulation.data.time
 
-    def _randomize_cubes(self, mujoco, model, data, reason: str) -> None:
-        """Randomize cube positions and immediately refresh MuJoCo state."""
-        positions = randomize_cube_positions(model, data)
-        mujoco.mj_forward(model, data)
+    def _reset_task(self, reason: str) -> None:
+        """Run the selected task's reset logic and refresh MuJoCo state."""
+        summary = self._simulation.reset_task()
         self._last_state_publish_time = float("-inf")
-        self.get_logger().info(
-            f"{reason}: randomized cubes: "
-            + ", ".join(
-                f"{name}=({position[0]:.3f}, {position[1]:.3f}, "
-                f"{position[2]:.3f})"
-                for name, position in positions.items()
-            )
-        )
+        self.get_logger().info(f"{reason}: {summary}")
+
+    def _on_reset_task(self, request, response):
+        """Schedule the selected task's reset logic in the main loop."""
+        del request
+        if self._simulation is None:
+            response.success = False
+            response.message = "simulation model is not loaded"
+            return response
+        self._task_reset_requested = True
+        response.success = True
+        response.message = "task reset requested"
+        return response
 
     def run(self) -> None:
         """Load the physics scene and advance it in real time until Viewer closes."""
@@ -201,11 +166,10 @@ class SO101MujocoViewer(Node):
             if model_path == self.default_model_path()
             else None
         )
-        model = mujoco.MjModel.from_xml_path(str(model_path), assets=assets)
-        data = mujoco.MjData(model)
-        self._configure_model(model, data)
-        self._apply_targets()
-        mujoco.mj_forward(model, data)
+        simulation = MujocoSimulation(model_path, assets, self._task, self._rng)
+        self._simulation = simulation
+        model = simulation.model
+        data = simulation.data
 
         timestep = model.opt.timestep
         realtime_factor = self.get_parameter("realtime_factor").value
@@ -229,13 +193,16 @@ class SO101MujocoViewer(Node):
         last_wall_time = time.perf_counter()
         try:
             with mujoco.viewer.launch_passive(model, data) as native_viewer:
-                self._randomize_cubes(mujoco, model, data, "startup")
+                self._reset_task("startup")
                 native_viewer.sync()
                 last_sim_time = data.time
                 while rclpy.ok() and native_viewer.is_running():
                     rclpy.spin_once(self, timeout_sec=0.001)
-                    if data.time < last_sim_time:
-                        self._randomize_cubes(mujoco, model, data, "reset")
+                    if self._task_reset_requested:
+                        self._task_reset_requested = False
+                        self._reset_task("episode reset")
+                    elif data.time < last_sim_time:
+                        self._reset_task("reset")
                         self._wrist_camera.reset_timing(data.time)
                         self._global_d435.reset_timing(data.time)
                         accumulator = 0.0
@@ -247,8 +214,8 @@ class SO101MujocoViewer(Node):
 
                     substeps = 0
                     while accumulator >= timestep and substeps < max_substeps:
-                        self._apply_targets()
-                        mujoco.mj_step(model, data)
+                        simulation.apply_targets()
+                        simulation.step()
                         accumulator -= timestep
                         substeps += 1
                     if accumulator >= timestep:
@@ -258,8 +225,8 @@ class SO101MujocoViewer(Node):
                         )
 
                     self._publish_simulated_state()
-                    self._wrist_camera.publish_if_due(self._data, self._sim_stamp)
-                    self._global_d435.publish_if_due(self._data, self._sim_stamp)
+                    self._wrist_camera.publish_if_due(data, self._sim_stamp)
+                    self._global_d435.publish_if_due(data, self._sim_stamp)
                     last_sim_time = data.time
                     native_viewer.sync()
         finally:
@@ -269,7 +236,7 @@ class SO101MujocoViewer(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = SO101MujocoViewer()
+    node = SO101MujocoSimulator()
     try:
         node.run()
     except (KeyboardInterrupt, ExternalShutdownException):

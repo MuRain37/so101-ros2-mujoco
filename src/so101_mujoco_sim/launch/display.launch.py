@@ -25,6 +25,16 @@ def generate_launch_description():
                 description="Ratio of MuJoCo simulation time to wall time.",
             ),
             DeclareLaunchArgument(
+                "random_seed",
+                default_value="-1",
+                description="Task randomization seed; negative selects a random seed.",
+            ),
+            DeclareLaunchArgument(
+                "task_id",
+                default_value="red_cube_to_red_target",
+                description="Registered task that owns scene reset behavior.",
+            ),
+            DeclareLaunchArgument(
                 "camera_enabled",
                 default_value="true",
                 description="Enable wrist-camera rendering and ROS image publication.",
@@ -54,8 +64,8 @@ def generate_launch_description():
             ),
             Node(
                 package="so101_mujoco_sim",
-                executable="so101_mujoco_viewer",
-                name="so101_mujoco_viewer",
+                executable="so101_mujoco_simulator",
+                name="so101_mujoco_simulator",
                 output="screen",
                 parameters=[
                     {
@@ -64,6 +74,10 @@ def generate_launch_description():
                         "realtime_factor": ParameterValue(
                             LaunchConfiguration("realtime_factor"), value_type=float
                         ),
+                        "random_seed": ParameterValue(
+                            LaunchConfiguration("random_seed"), value_type=int
+                        ),
+                        "task_id": LaunchConfiguration("task_id"),
                         "camera_enabled": ParameterValue(
                             LaunchConfiguration("camera_enabled"), value_type=bool
                         ),

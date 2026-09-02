@@ -3,7 +3,7 @@
 <package format="3">
   <name>so101_mujoco_sim</name>
   <version>0.1.0</version>
-  <description>MuJoCo viewer package for the SO-101 follower arm.</description>
+  <description>MuJoCo simulator package for the SO-101 follower arm.</description>
   <maintainer email="murain@example.com">murain</maintainer>
   <license>Apache-2.0</license>
 
@@ -15,6 +15,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>rosgraph_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
   <exec_depend>so101_description</exec_depend>
 
   <export>

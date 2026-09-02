@@ -35,6 +35,7 @@ class SO101DatasetRecorder(Node):
         super().__init__("so101_dataset_recorder")
         self.declare_parameter("output_dir", "dataset/raw")
         self.declare_parameter("task", "把红色方块放到红色区域")
+        self.declare_parameter("task_id", "red_cube_to_red_target")
         self.declare_parameter("bag_topics", list(DEFAULT_BAG_TOPICS))
         self.declare_parameter("startup_timeout", 5.0)
         self.declare_parameter("minimum_camera_rate", 27.0)
@@ -42,6 +43,7 @@ class SO101DatasetRecorder(Node):
         self._episode_dir = None
         self._bag_dir = None
         self._manifest = None
+        self._reset_client = self.create_client(Trigger, "/sim/reset_task")
         self.create_service(Trigger, "dataset/start_episode", self._start_episode)
         self.create_service(Trigger, "dataset/stop_episode", self._stop_episode)
         self.get_logger().info("ready; call /dataset/start_episode to begin recording")
@@ -108,6 +110,7 @@ class SO101DatasetRecorder(Node):
         self._manifest = {
             "episode_id": episode_dir.name.removeprefix("episode_"),
             "recorded_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "task_id": self.get_parameter("task_id").value,
             "task": self.get_parameter("task").value,
             "format": "rosbag2_mcap",
             "topics": topics,
@@ -193,6 +196,25 @@ class SO101DatasetRecorder(Node):
         self._manifest = None
         return valid, episode_dir, validation["errors"]
 
+    def _request_task_reset(self) -> bool:
+        if not self._reset_client.service_is_ready():
+            self.get_logger().error(
+                "cannot reset task; /sim/reset_task is unavailable"
+            )
+            return False
+        future = self._reset_client.call_async(Trigger.Request())
+        future.add_done_callback(self._report_reset_result)
+        return True
+
+    def _report_reset_result(self, future) -> None:
+        try:
+            response = future.result()
+        except Exception as error:  # noqa: BLE001
+            self.get_logger().error(f"simulation reset failed: {error}")
+            return
+        log = self.get_logger().info if response.success else self.get_logger().error
+        log(response.message)
+
     def _stop_episode(self, request, response):
         del request
         if self._process is None:
@@ -201,12 +223,15 @@ class SO101DatasetRecorder(Node):
             return response
 
         valid, episode_dir, errors = self._finish_episode()
+        reset_requested = self._request_task_reset()
         response.success = valid
         response.message = (
             f"saved and validated rosbag episode to {episode_dir}"
             if valid
             else f"saved invalid episode to {episode_dir}: {'; '.join(errors)}"
         )
+        if not reset_requested:
+            response.message += "; task was not reset"
         return response
 
 

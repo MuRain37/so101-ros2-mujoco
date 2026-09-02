@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -14,7 +15,11 @@ def generate_launch_description():
                 "launch",
                 "display.launch.py",
             ])
-        )
+        ),
+        launch_arguments={
+            "random_seed": LaunchConfiguration("random_seed"),
+            "task_id": LaunchConfiguration("dataset_task_id"),
+        }.items(),
     )
     return LaunchDescription(
         [
@@ -38,6 +43,19 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("dataset_output_dir", default_value="dataset/raw"),
             DeclareLaunchArgument("dataset_task", default_value="把红色方块放到红色区域"),
+            DeclareLaunchArgument(
+                "dataset_task_id", default_value="red_cube_to_red_target"
+            ),
+            DeclareLaunchArgument(
+                "random_seed",
+                default_value="-1",
+                description="Task randomization seed; negative selects a random seed.",
+            ),
+            DeclareLaunchArgument(
+                "dataset_gui_enabled",
+                default_value="true",
+                description="Open the dataset start/stop control window.",
+            ),
             Node(
                 package="so101_leader_bridge",
                 executable="so101_leader_driver",
@@ -61,8 +79,17 @@ def generate_launch_description():
                     {
                         "output_dir": LaunchConfiguration("dataset_output_dir"),
                         "task": LaunchConfiguration("dataset_task"),
+                        "task_id": LaunchConfiguration("dataset_task_id"),
                     }
                 ],
+            ),
+            Node(
+                package="so101_vla_dataset",
+                executable="so101_dataset_gui",
+                name="so101_dataset_gui",
+                output="screen",
+                condition=IfCondition(LaunchConfiguration("dataset_gui_enabled")),
+                parameters=[{"task": LaunchConfiguration("dataset_task")}],
             ),
         ]
     )

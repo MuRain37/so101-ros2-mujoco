@@ -1,4 +1,4 @@
-# SO-101 MuJoCo viewer
+# SO-101 MuJoCo simulator
 
 This ROS 2 Python package runs the SO-101 follower arm in MuJoCo's native
 interactive viewer. It reuses the STL meshes provided by the
@@ -28,13 +28,20 @@ To load another self-contained MJCF scene, provide `model_path`:
 ros2 launch so101_mujoco_sim display.launch.py model_path:=/path/to/scene.xml
 ```
 
-The red and blue cubes are randomized at every startup. Their centre positions
-use a centred `0.18 m x 0.18 m` square inset from the space between the
-placement targets: `x=[0.16, 0.34]` m and `y=[-0.09, 0.09]` m. These ranges
-and the 1 cm edge-to-edge gap are constants in `cube_randomizer.py`. The sampler uses
-each cube's MuJoCo box size to ensure the cubes cannot overlap.
+When `model_path` is empty, the selected task supplies its default scene file.
+An explicit `model_path` overrides that default.
 
-The viewer needs a desktop OpenGL session. It always advances MuJoCo physics at
+The red and blue cubes are randomized at every startup. Their centre positions
+use the scene's named `cube_spawn_area`, currently a centred `0.18 m x 0.18 m`
+square with `x=[0.16, 0.34]` m and `y=[-0.09, 0.09]` m. The sampler keeps a
+1 cm edge-to-edge gap so the cubes cannot overlap. Calling
+`/sim/reset_task` delegates reset behavior to the selected `task_id` without changing
+the robot, leader control, or simulation clock. The current task reads its spawn bounds
+from the named `cube_spawn_area` site. Set `random_seed` to a non-negative integer to
+reproduce the random sequence; its default is `-1`. Success evaluation is reserved by
+the task interface but is not enabled yet.
+
+The simulator needs a desktop OpenGL session. It always advances MuJoCo physics at
 the model's fixed 2 ms step, publishes `/clock` and `/sim/joint_states`, and
 contains a wooden table, the SO-101 on its tabletop, a free 24 mm-wide red cube and blue cube, plus non-colliding red and blue
 placement targets. The follower carries the Menagerie wrist-camera mount and an original visual model of the recommended InnoMaker `U20CAM-1080P-S1` module. Its single black STL preserves the 32 mm PCB, 2.2 mm holes, fitted 26.0286 mm mounting pitch, M12 lens interface, and aligned camera optical axis. The simulator renders this camera and publishes its images with MuJoCo simulation-time stamps. Published dimensions come from the [manufacturer manual](https://github.com/INNO-MAKER/U20CAM-1080P-S1/blob/main/U20CAM-1080P-S1%20UserManual-v1.1.pdf), and the module selection follows the [official SO-101 installation guide](https://github.com/TheRobotStudio/SO-ARM100/blob/main/Optional/SO101_Wrist_Cam_Hex-Nut_Mount_32x32_UVC_Module/README.md).
@@ -104,7 +111,7 @@ ros2 topic echo /wrist_cam/camera_info --once
 
 ## Leader-arm teleoperation
 
-The viewer receives a `sensor_msgs/JointState` target, clamps it to the joint
+The simulator receives a `sensor_msgs/JointState` target, clamps it to the joint
 limits, and writes it to the MuJoCo position-actuator controls. The published
 `/sim/action` topic reports the target values actually written to the MuJoCo
 controls, while `/sim/joint_states` reports the post-physics pose, which can
@@ -112,7 +119,7 @@ differ from the target during PD response or contact. Both messages use the same
 simulation timestamp.
 
 ```bash
-ros2 run so101_mujoco_sim so101_mujoco_viewer \
+ros2 run so101_mujoco_sim so101_mujoco_simulator \
   --ros-args -p joint_state_topic:=/joint_states
 ```
 

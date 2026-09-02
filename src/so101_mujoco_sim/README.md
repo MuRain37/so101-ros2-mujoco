@@ -71,6 +71,17 @@ ros2 topic hz /d435/depth/image_raw
 rqt_image_view /d435/color/image_raw
 ```
 
+## Compressed RGB preview
+
+For smooth local preview, use the JPEG topics instead of the raw recording topics:
+
+```bash
+rqt_image_view /wrist_cam/image_preview/compressed
+rqt_image_view /d435/color/image_preview/compressed
+```
+
+Set `camera_preview_enabled:=false` to disable both preview republishers. Raw RGB-D topics remain unchanged for rosbag recording.
+
 ## Wrist-camera topics
 
 The Viewer publishes `rgb8` images on `/wrist_cam/image_raw` and matching

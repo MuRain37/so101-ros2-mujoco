@@ -168,6 +168,10 @@ class MujocoCameraPublisher:
         while self._next_publish_time <= data.time + 1e-12:
             self._next_publish_time += self._publish_period
 
+    def reset_timing(self, sim_time: float) -> None:
+        """Publish immediately after the simulation clock moves backwards."""
+        self._next_publish_time = float(sim_time)
+
     def close(self) -> None:
         """Release the renderer's OpenGL resources."""
         if self._renderer is not None:

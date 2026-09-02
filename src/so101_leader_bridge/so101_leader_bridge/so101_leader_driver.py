@@ -14,6 +14,7 @@ from pathlib import Path
 
 import serial
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
@@ -194,8 +195,18 @@ class SO101LeaderDriver(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    rclpy.spin(SO101LeaderDriver())
-    rclpy.shutdown()
+    node = SO101LeaderDriver()
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    finally:
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

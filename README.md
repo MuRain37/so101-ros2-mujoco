@@ -46,6 +46,13 @@ Start leader-arm teleoperation and MuJoCo together:
 ros2 launch so101_bringup teleop_sim.launch.py
 ```
 
+Start and stop a Zstd-compressed MCAP episode with the dataset services:
+
+```bash
+ros2 service call /dataset/start_episode std_srvs/srv/Trigger "{}"
+ros2 service call /dataset/stop_episode std_srvs/srv/Trigger "{}"
+```
+
 The default calibration file is resolved from the current user's home directory.
 Override it with `calibration_file:=/path/to/calibration.json` when needed.
 

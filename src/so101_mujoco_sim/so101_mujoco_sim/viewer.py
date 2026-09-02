@@ -6,6 +6,7 @@ from pathlib import Path
 
 import rclpy
 from ament_index_python.packages import get_package_share_directory
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
@@ -235,6 +236,8 @@ class SO101MujocoViewer(Node):
                     rclpy.spin_once(self, timeout_sec=0.001)
                     if data.time < last_sim_time:
                         self._randomize_cubes(mujoco, model, data, "reset")
+                        self._wrist_camera.reset_timing(data.time)
+                        self._global_d435.reset_timing(data.time)
                         accumulator = 0.0
                         last_wall_time = time.perf_counter()
 
@@ -269,12 +272,15 @@ def main(args=None) -> None:
     node = SO101MujocoViewer()
     try:
         node.run()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     except Exception as exc:  # noqa: BLE001
         node.get_logger().fatal(str(exc))
         raise
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

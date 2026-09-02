@@ -1,23 +1,18 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    return LaunchDescription(
-        [
-            DeclareLaunchArgument(
-                "model_path",
-                default_value="",
-                description="Optional path to a self-contained MuJoCo XML scene.",
-            ),
-            Node(
-                package="so101_mujoco_sim",
-                executable="so101_mujoco_viewer",
-                name="so101_mujoco_viewer",
-                output="screen",
-                parameters=[{"model_path": LaunchConfiguration("model_path")}],
-            ),
-        ]
+    simulation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare("so101_mujoco_sim"),
+                "launch",
+                "display.launch.py",
+            ])
+        )
     )
+    return LaunchDescription([simulation])

@@ -16,6 +16,7 @@ setup(
         "console_scripts": [
             "so101_dataset_recorder = so101_vla_dataset.recorder:main",
             "so101_dataset_gui = so101_vla_dataset.dataset_gui:main",
+            "convert_mcap_to_lerobot = so101_vla_dataset.convert_mcap_to_lerobot:main",
         ],
     },
 )

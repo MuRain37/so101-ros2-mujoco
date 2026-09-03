@@ -1,0 +1,4 @@
+# Python dependencies for dataset conversion and future LeRobot training.
+lerobot==0.5.1
+huggingface-hub==0.35.3
+setuptools<80

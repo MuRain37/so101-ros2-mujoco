@@ -19,6 +19,7 @@ env/
 
 # Runtime output
 dataset/
+outputs/
 MUJOCO_LOG.TXT
 *.log
 

@@ -9,6 +9,9 @@ JOINTS = (
     "gripper",
 )
 
+# Median episode-start pose from the ACT training dataset, in JOINTS order.
+HOME_QPOS = (0.0389, -1.7350, 1.5860, 1.1091, -0.0188, -0.1729)
+
 
 class MujocoSimulation:
     """Own one MuJoCo model and its mutable physics state."""
@@ -22,10 +25,11 @@ class MujocoSimulation:
         self._task = task
         self._rng = rng
         self._joint_qpos_addresses = {}
+        self._joint_dof_addresses = {}
         self._actuator_ids = {}
         self._targets = {}
         self._configure_robot()
-        self.apply_targets()
+        self.reset_robot()
         mujoco.mj_forward(self.model, self.data)
 
     def _configure_robot(self):
@@ -39,7 +43,9 @@ class MujocoSimulation:
             if joint_id < 0 or actuator_id < 0:
                 continue
             qpos_address = int(self.model.jnt_qposadr[joint_id])
+            dof_address = int(self.model.jnt_dofadr[joint_id])
             self._joint_qpos_addresses[name] = (joint_id, qpos_address)
+            self._joint_dof_addresses[name] = dof_address
             self._actuator_ids[name] = actuator_id
             self._targets[name] = float(self.data.qpos[qpos_address])
 
@@ -64,6 +70,17 @@ class MujocoSimulation:
         for name, target in self._targets.items():
             self.data.ctrl[self._actuator_ids[name]] = target
 
+    def reset_robot(self):
+        """Reset the robot to the pose used at the start of training episodes."""
+        for name, position in zip(JOINTS, HOME_QPOS):
+            _, qpos_address = self._joint_qpos_addresses[name]
+            dof_address = self._joint_dof_addresses[name]
+            self.data.qpos[qpos_address] = position
+            self.data.qvel[dof_address] = 0.0
+            self.data.qacc_warmstart[dof_address] = 0.0
+            self._targets[name] = position
+        self.apply_targets()
+
     def step(self):
         self._mujoco.mj_step(self.model, self.data)
 
@@ -77,6 +94,7 @@ class MujocoSimulation:
         return [float(self.data.ctrl[self._actuator_ids[name]]) for name in JOINTS]
 
     def reset_task(self):
+        self.reset_robot()
         summary = self._task.reset(self.model, self.data, self._rng)
         self._mujoco.mj_forward(self.model, self.data)
         return summary

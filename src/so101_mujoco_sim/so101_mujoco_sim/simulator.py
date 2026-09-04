@@ -48,7 +48,6 @@ class SO101MujocoSimulator(Node):
         seed = int(self.get_parameter("random_seed").value)
         self._rng = random.Random(None if seed < 0 else seed)
         self._task = create_task(str(self.get_parameter("task_id").value))
-        self._task_reset_requested = False
         self._reset_service = self.create_service(
             Trigger, "sim/reset_task", self._on_reset_task
         )
@@ -137,15 +136,15 @@ class SO101MujocoSimulator(Node):
         self.get_logger().info(f"{reason}: {summary}")
 
     def _on_reset_task(self, request, response):
-        """Schedule the selected task's reset logic in the main loop."""
+        """Reset the robot and selected task before acknowledging the request."""
         del request
         if self._simulation is None:
             response.success = False
             response.message = "simulation model is not loaded"
             return response
-        self._task_reset_requested = True
+        self._reset_task("episode reset")
         response.success = True
-        response.message = "task reset requested"
+        response.message = "episode reset complete"
         return response
 
     def run(self) -> None:
@@ -198,10 +197,7 @@ class SO101MujocoSimulator(Node):
                 last_sim_time = data.time
                 while rclpy.ok() and native_viewer.is_running():
                     rclpy.spin_once(self, timeout_sec=0.001)
-                    if self._task_reset_requested:
-                        self._task_reset_requested = False
-                        self._reset_task("episode reset")
-                    elif data.time < last_sim_time:
+                    if data.time < last_sim_time:
                         self._reset_task("reset")
                         self._wrist_camera.reset_timing(data.time)
                         self._global_d435.reset_timing(data.time)

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>so101_policy</name>
+  <version>0.1.0</version>
+  <description>LeRobot policy inference nodes for SO-101.</description>
+  <maintainer email="murain@example.com">murain</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <exec_depend>python_qt_binding</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

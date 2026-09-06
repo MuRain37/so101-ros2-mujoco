@@ -62,18 +62,21 @@ def read_frame(pid):
     return bytes([0xFF, 0xFF, pid, 0x04, 0x02, READ_ADDR, READ_LEN, ck])
 
 
-def parse_response(buf):
+def parse_response(buf, expected_id):
     """Extract the payload bytes of the first valid status packet, if any."""
     for i in range(len(buf) - 1):
         if buf[i] == 0xFF and buf[i + 1] == 0xFF and i + 3 < len(buf):
             ln = buf[i + 3]
             total = ln + 4
-            if i + total <= len(buf):
+            if ln == 4 and i + total <= len(buf):
                 ck = 0
                 for j in range(i + 2, i + total - 1):
                     ck += buf[j]
-                if (~ck & 0xFF) == buf[i + total - 1]:
-                    return buf[i + 5 : i + total - 1]
+                if ((~ck & 0xFF) == buf[i + total - 1]
+                        and buf[i + 2] == expected_id and buf[i + 4] == 0):
+                    payload = buf[i + 5 : i + total - 1]
+                    if (payload[0] | payload[1] << 8) <= 4095:
+                        return payload
     return None
 
 
@@ -108,7 +111,6 @@ class SO101LeaderDriver(Node):
         rate = self.get_parameter("rate").value
         self.timer = self.create_timer(1.0 / rate, self.tick)
         self.ser = None
-        self.last = [0.0] * 6
         self.calibration = self._load_calibration()
         self._fail_count = 0
         self._connect()
@@ -119,22 +121,25 @@ class SO101LeaderDriver(Node):
             with path.open("r", encoding="utf-8") as f:
                 calib = json.load(f)
             self.get_logger().info(f"loaded calibration from {path}")
+            for name in JOINTS:
+                if name not in calib or calib[name]["range_max"] <= calib[name]["range_min"]:
+                    raise ValueError(f"invalid calibration for {name}")
             return calib
         except Exception as e:  # noqa: BLE001
             self.get_logger().error(f"failed to load calibration: {e}")
-            return {}
+            raise RuntimeError(f"cannot load valid leader calibration: {path}") from e
 
     def _connect(self):
         try:
             self.ser = serial.Serial(
-                self.get_parameter("port").value, BAUDRATE, timeout=0.02
+                self.get_parameter("port").value, BAUDRATE, timeout=0.003, exclusive=True
             )
             self.get_logger().info(
                 f"opened serial port {self.get_parameter('port').value} @ {BAUDRATE}"
             )
         except Exception as e:  # noqa: BLE001
             self.ser = None
-            self.get_logger().error(f"failed to open serial port: {e}")
+            raise RuntimeError(f"cannot exclusively open leader serial port: {e}") from e
 
     def _read_motor(self, pid):
         """Read one motor's raw position, retrying once on failure."""
@@ -142,15 +147,13 @@ class SO101LeaderDriver(Node):
             try:
                 self.ser.reset_input_buffer()
                 self.ser.write(read_frame(pid))
-                time.sleep(0.001)
-                n = self.ser.in_waiting
-                if n == 0:
-                    time.sleep(0.005)
-                    n = self.ser.in_waiting
-                buf = self.ser.read(n) if n else b""
-                data = parse_response(buf)
-                if data is not None and len(data) >= 2:
-                    return data[0] | (data[1] << 8)
+                deadline = time.monotonic() + 0.02
+                buf = b""
+                while time.monotonic() < deadline:
+                    buf += self.ser.read(max(1, self.ser.in_waiting))
+                    data = parse_response(buf, pid)
+                    if data is not None:
+                        return data[0] | (data[1] << 8)
             except serial.SerialException:
                 pass
         return None
@@ -177,7 +180,6 @@ class SO101LeaderDriver(Node):
                     continue
                 norm = normalize(name, raw, self.calibration[name])
                 radians.append(norm_to_radians(name, norm))
-            self.last = radians
             self._fail_count = 0
         else:
             self._fail_count += 1
@@ -185,12 +187,18 @@ class SO101LeaderDriver(Node):
                 self.get_logger().warn(
                     f"failed to read motors ({self._fail_count} consecutive failures)"
                 )
+            return
 
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = JOINTS
-        msg.position = list(self.last)
+        msg.position = radians
         self.pub.publish(msg)
+
+    def destroy_node(self):
+        if self.ser is not None:
+            self.ser.close()
+        return super().destroy_node()
 
 
 def main(args=None):

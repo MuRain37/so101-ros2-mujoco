@@ -1,0 +1,42 @@
+from glob import glob
+import os
+
+from setuptools import find_packages, setup
+
+
+package_name = "mujoco_sim"
+mujoco_xml_files = glob("mujoco/**/*.xml", recursive=True)
+
+
+setup(
+    name=package_name,
+    version="0.1.0",
+    packages=find_packages(),
+    data_files=[
+        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
+        (
+            "share/" + package_name,
+            [
+                "package.xml",
+                "README.md",
+            ],
+        ),
+        (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
+        *(
+            (os.path.join("share", package_name, os.path.dirname(path)), [path])
+            for path in mujoco_xml_files
+        ),
+    ],
+    install_requires=["setuptools"],
+    zip_safe=True,
+    maintainer="murain",
+    maintainer_email="murain@example.com",
+    description="MuJoCo simulator package for the SO-101 follower arm",
+    license="Apache-2.0",
+    entry_points={
+        "console_scripts": [
+            "mujoco_simulator = mujoco_sim.simulator:main",
+            "mujoco_viewer = mujoco_sim.simulator:main",
+        ],
+    },
+)

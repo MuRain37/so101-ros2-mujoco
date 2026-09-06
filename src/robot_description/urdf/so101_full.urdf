@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Complete SO-101 assembly (all parts, including leader handle & trigger).
+     Static model: all geometry comes from the official SO101 Assembly STEP-derived STL. -->
+<robot name="so101_full">
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_description/meshes/so101_assembly.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="so101_print">
+        <color rgba="1.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
+  </link>
+</robot>

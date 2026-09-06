@@ -1,0 +1,73 @@
+from pathlib import Path
+
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler, EmitEvent
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+from launch.actions import OpaqueFunction
+from robot_bringup.validation import validate_task
+
+
+def generate_launch_description():
+    project_root = Path.cwd()
+    simulation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare("mujoco_sim"), "launch", "display.launch.py"]
+            )
+        ),
+        launch_arguments={
+            "robot_id": LaunchConfiguration("robot_id"),
+            "random_seed": LaunchConfiguration("random_seed"),
+            "task_id": LaunchConfiguration("task_id"),
+        }.items(),
+    )
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument("robot_id", default_value="auto"),
+            RegisterEventHandler(OnProcessExit(on_exit=[
+                EmitEvent(event=Shutdown(reason="inference component exited"))
+            ])),
+            DeclareLaunchArgument(
+                "policy_path",
+                default_value=str(
+                    project_root
+                    / "outputs/train/act_so101_red_blue_cubes/checkpoints/100000/pretrained_model"
+                ),
+            ),
+            DeclareLaunchArgument("device", default_value="cuda"),
+            DeclareLaunchArgument("inference_rate", default_value="30.0"),
+            DeclareLaunchArgument("task_id", default_value="red_blue_cubes_to_targets"),
+            DeclareLaunchArgument("random_seed", default_value="-1"),
+            DeclareLaunchArgument("policy_gui_enabled", default_value="true"),
+            OpaqueFunction(function=validate_task),
+            simulation,
+            Node(
+                package="robot_policy",
+                executable="act_policy",
+                name="act_policy",
+                output="screen",
+                prefix=[str(project_root / ".venv/bin/python")],
+                parameters=[
+                    {
+                        "policy_path": LaunchConfiguration("policy_path"),
+                        "robot_id": LaunchConfiguration("robot_id"),
+                        "device": LaunchConfiguration("device"),
+                        "inference_rate": LaunchConfiguration("inference_rate"),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_policy",
+                executable="robot_policy_gui",
+                name="robot_policy_gui",
+                output="screen",
+                condition=IfCondition(LaunchConfiguration("policy_gui_enabled")),
+            ),
+        ]
+    )

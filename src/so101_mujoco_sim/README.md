@@ -125,3 +125,51 @@ ros2 run so101_mujoco_sim so101_mujoco_simulator \
 
 For the leader-arm bridge and Viewer together, use
 `ros2 launch so101_bringup teleop_sim.launch.py`.
+
+## Red cube in a drawer
+
+Task `red_cube_in_drawer`: open the drawer, put the red cube inside, then close it.
+The initial cube pose is fixed at `(0.12, -0.16, 0.013)` metres. It has a free
+joint and remains graspable. The cabinet is fixed at `(0.34, 0, 0)` on the
+table, directly in front of the arm. This scene mounts the arm at `(-0.04, 0, 0)`
+using MuJoCo model attachment, leaving the shared arm model unchanged.
+Its handle faces the robot, and the passive slide opens along world -X
+through 0.096 m. Cabinet dimensions are approximately 0.142 m wide, 0.12 m deep,
+and 0.101 m high (excluding the handle).
+
+The model is adapted at 60% scale from
+[Meta-World's drawer](https://github.com/Farama-Foundation/Metaworld/blob/6e01ad7e2ffb2302e4dca04f796fcd8837df8540/metaworld/assets/objects/assets/drawer.xml).
+Meshes live in `so101_description/meshes/metaworld_drawer*.stl`; attribution and
+the MIT license are in `so101_description/THIRD_PARTY_LICENSE_METAWORLD.txt`.
+The hollow drawer and handle use separate primitive collision geoms, while
+the original STL meshes provide appearance. No drawer motor is added.
+
+Build the new resources from the workspace root:
+
+```bash
+colcon build --symlink-install \
+  --packages-select so101_description so101_mujoco_sim
+source install/setup.zsh
+```
+
+View the scene:
+
+```bash
+ros2 launch so101_bringup mujoco.launch.py \
+  task_id:=red_cube_in_drawer
+```
+
+Teleoperate and record:
+
+```bash
+ros2 launch so101_bringup teleop_sim.launch.py \
+  dataset_task_id:=red_cube_in_drawer
+```
+
+The existing `/sim/reset_task` service restores the robot home pose, cube start
+pose, and closed drawer, including task-joint velocities. Adjust placement in
+`mujoco/tasks/red_cube_in_drawer.xml`; drawer geometry and travel are defined in
+`mujoco/objects/metaworld_drawer.xml`. Existing camera names and robot action
+dimensions are preserved. This scene tilts the global camera toward the drawer
+so the complete cabinet remains visible. This adds the physical scene and recording task;
+automatic completion detection and a trained drawer policy are not included.

@@ -2,10 +2,12 @@
 
 from .red_cube_to_target import RedCubeToTargetTask
 from .red_blue_cubes_to_targets import RedBlueCubesToTargetsTask
+from .red_cube_in_drawer import RedCubeInDrawerTask
 
 TASKS = {
     RedCubeToTargetTask.task_id: RedCubeToTargetTask,
     RedBlueCubesToTargetsTask.task_id: RedBlueCubesToTargetsTask,
+    RedCubeInDrawerTask.task_id: RedCubeInDrawerTask,
 }
 
 

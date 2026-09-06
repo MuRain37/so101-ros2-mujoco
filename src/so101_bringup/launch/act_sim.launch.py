@@ -28,12 +28,12 @@ def generate_launch_description():
                 "policy_path",
                 default_value=str(
                     project_root
-                    / "outputs/train/act_so101_red_cube/checkpoints/100000/pretrained_model"
+                    / "outputs/train/act_so101_red_blue_cubes/checkpoints/100000/pretrained_model"
                 ),
             ),
             DeclareLaunchArgument("device", default_value="cuda"),
             DeclareLaunchArgument("inference_rate", default_value="30.0"),
-            DeclareLaunchArgument("task_id", default_value="red_cube_to_red_target"),
+            DeclareLaunchArgument("task_id", default_value="red_blue_cubes_to_targets"),
             DeclareLaunchArgument("random_seed", default_value="-1"),
             DeclareLaunchArgument("policy_gui_enabled", default_value="true"),
             simulation,

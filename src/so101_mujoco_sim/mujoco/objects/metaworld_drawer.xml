@@ -1,0 +1,36 @@
+<mujocoinclude>
+    <!-- Adapted from Meta-World objects/assets/drawer.xml (MIT).
+         Origin is the cabinet bottom; opening direction is local -Y.
+         Separate colliders preserve the hollow drawer and handle opening. -->
+    <body name="drawer_cabinet" pos="0 0 0.0504">
+        <geom class="drawer_visual" mesh="metaworld_drawercase" material="drawer_green" />
+        <geom class="drawer_collision" pos="-0.066 0 0" size="0.0048 0.06 0.0504" />
+        <geom class="drawer_collision" pos="0.066 0 0" size="0.0048 0.06 0.0504" />
+        <geom class="drawer_collision" pos="0 0.0552 -0.0048" size="0.0612 0.0048 0.0456" />
+        <geom class="drawer_collision" pos="0 -0.0048 -0.042" size="0.0612 0.0552 0.0084" />
+        <geom class="drawer_collision" pos="0 0 0.0456" size="0.0612 0.06 0.0048" />
+        <body name="drawer" pos="0 -0.006 0.0036">
+            <joint name="drawer_slide" type="slide" axis="0 1 0" range="-0.096 0"
+                limited="true" damping="1.2" armature="0.000216" />
+            <geom class="drawer_visual" mesh="metaworld_drawer" material="drawer_green" />
+            <geom class="drawer_visual" mesh="metaworld_drawerhandle"
+                pos="0 -0.0684 0" material="drawer_handle_white" />
+            <geom name="drawer_front" class="drawer_collision" pos="0 -0.0492 0.0048"
+                size="0.06 0.0048 0.0312" mass="0.00864" />
+            <geom class="drawer_collision" pos="0 0.0492 0.0048"
+                size="0.06 0.0048 0.0312" mass="0.00864" />
+            <geom class="drawer_collision" pos="-0.0552 0 0.0048"
+                size="0.0048 0.0444 0.0312" mass="0.00864" />
+            <geom class="drawer_collision" pos="0.0552 0 0.0048"
+                size="0.0048 0.0444 0.0312" mass="0.00864" />
+            <geom name="drawer_bottom" class="drawer_collision" pos="0 0 -0.0312"
+                size="0.06 0.054 0.0048" mass="0.00864" />
+            <geom class="drawer_collision" type="capsule"
+                fromto="-0.03 -0.054 0 -0.03 -0.09 0" size="0.0054" mass="0.01296" />
+            <geom name="drawer_handle" class="drawer_collision" type="capsule"
+                fromto="-0.03 -0.09 0 0.03 -0.09 0" size="0.0054" mass="0.01296" />
+            <geom class="drawer_collision" type="capsule"
+                fromto="0.03 -0.054 0 0.03 -0.09 0" size="0.0054" mass="0.01296" />
+        </body>
+    </body>
+</mujocoinclude>

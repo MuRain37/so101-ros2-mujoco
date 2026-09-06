@@ -81,6 +81,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("dataset/raw"))
     parser.add_argument("--output", type=Path, default=Path("dataset/lerobot/so101_red_cube"))
+    parser.add_argument("--repo-id", default="so101_red_cube")
     parser.add_argument("--task-id", default="red_cube_to_red_target")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--tolerance", type=float, default=0.02)
@@ -98,7 +99,7 @@ def main(argv=None):
         "action": {"dtype": "float32", "shape": (6,), "names": {"axes": list(JOINTS)}},
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    dataset = LeRobotDataset.create(repo_id="so101_red_cube", root=args.output, fps=args.fps,
+    dataset = LeRobotDataset.create(repo_id=args.repo_id, root=args.output, fps=args.fps,
                                      robot_type="so101", features=features, use_videos=True)
     total = sum(convert_episode(dataset, episode, args.task_id, args.tolerance) for episode in episodes)
     if total == 0:

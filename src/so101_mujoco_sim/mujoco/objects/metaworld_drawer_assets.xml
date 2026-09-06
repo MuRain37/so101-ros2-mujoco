@@ -1,0 +1,19 @@
+<mujocoinclude>
+    <!-- Meta-World drawer at 60% scale; see THIRD_PARTY_LICENSE_METAWORLD.txt. -->
+    <default>
+        <default class="drawer_visual">
+            <geom type="mesh" contype="0" conaffinity="0" group="2" mass="0" />
+        </default>
+        <default class="drawer_collision">
+            <geom type="box" group="3" rgba="0 0 0 0" condim="3"
+                friction="1 0.005 0.0001" solimp="0.99 0.99 0.01" solref="0.01 1" />
+        </default>
+    </default>
+    <asset>
+        <material name="drawer_green" rgba="0.4 0.65 0.4 1" specular="0.15" shininess="0.2" />
+        <material name="drawer_handle_white" rgba="0.75 0.75 0.75 1" specular="0.2" shininess="0.3" />
+        <mesh name="metaworld_drawer" file="metaworld_drawer.stl" scale="0.6 0.6 0.6" />
+        <mesh name="metaworld_drawercase" file="metaworld_drawercase.stl" scale="0.6 0.6 0.6" />
+        <mesh name="metaworld_drawerhandle" file="metaworld_drawerhandle.stl" scale="0.6 0.6 0.6" />
+    </asset>
+</mujocoinclude>

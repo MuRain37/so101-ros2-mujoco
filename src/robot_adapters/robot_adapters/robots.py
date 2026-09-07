@@ -10,6 +10,9 @@ class RobotAdapter(ABC):
     model_joints: tuple
     actuators: tuple
     home: tuple
+    down_joints: tuple
+    minimum_tcp_height: float
+    tcp_workspace: tuple
     tcp_site: str
     model_file: str
 
@@ -60,7 +63,7 @@ class RobotAdapter(ABC):
         pass
 
     @abstractmethod
-    def gripper_from_leader(self, angle):
+    def gripper_from_leader(self, angle, open_fraction=1.0):
         pass
 
     def metadata(self):
@@ -78,13 +81,17 @@ class SO101Adapter(RobotAdapter):
     # A pose whose grasp axis (wrist -> fingertip) is vertical down; used as
     # the orientation reference when retargeting to other arms.
     down_joints = (-0.063, -1.058, 1.059, 1.477, -0.025, -0.1729)
+    minimum_tcp_height = 0.011
+    # Fixed effective TCP range in the SO101 base frame. Each axis maps
+    # linearly onto the configured follower workspace.
+    tcp_workspace = (0.151, 0.274, -0.088, 0.078, 0.011, 0.1785)
     tcp_site = "gripperframe"
     model_file = "so101/so101_arm.xml"
 
     def apply(self, data, targets):
         data.ctrl[self.aids] = targets
 
-    def gripper_from_leader(self, angle):
+    def gripper_from_leader(self, angle, open_fraction=1.0):
         return float(angle)
 
 
@@ -96,6 +103,8 @@ class UR5eRobotiqAdapter(RobotAdapter):
     actuators = ("shoulder_pan", "shoulder_lift", "elbow",
                  "wrist_1", "wrist_2", "wrist_3", "robotiq_fingers_actuator")
     home = (-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0, 0.0)
+    down_joints = home
+    minimum_tcp_height = 0.015
     tcp_site = "tcp"
     model_file = "ur5e/ur5e_robotiq.xml"
 
@@ -110,9 +119,12 @@ class UR5eRobotiqAdapter(RobotAdapter):
         controls[-1] *= 255.0 / 0.8
         data.ctrl[self.aids] = controls
 
-    def gripper_from_leader(self, angle):
-        openness = np.clip((angle + 0.174533) / (1.74533 + 0.174533), 0, 1)
-        return float(0.8 * (1 - openness))
+    def gripper_from_leader(self, angle, open_fraction=1.0):
+        leader_openness = np.clip(
+            (angle + 0.174533) / (1.74533 + 0.174533), 0, 1
+        )
+        follower_openness = np.clip(leader_openness / open_fraction, 0, 1)
+        return float(0.8 * (1 - follower_openness))
 
 
 ROBOTS = {"so101": SO101Adapter, "ur5e": UR5eRobotiqAdapter}

@@ -6,4 +6,4 @@ robotiq_2f85: BSD-2-Clause (LICENSE in that folder).
 Both upstream folders are unmodified.
 Both live under ur5e/ beside the assembly that uses them.
 ur5e/ur5e_robotiq.xml adapts UR5e: relative mesh paths, attached 2F-85,
-TCP and wrist camera, removed home keyframe (reset is provided by robot_core).
+TCP and wrist camera, removed home keyframe (reset is provided by robot_adapters).

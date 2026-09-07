@@ -11,7 +11,7 @@ from pathlib import Path
 
 import rclpy
 from mujoco_sim.tasks import create_task
-from robot_core import get_robot
+from robot_adapters import get_robot
 import rosbag2_py
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node

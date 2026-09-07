@@ -33,6 +33,8 @@
 
   <asset>
     <model name="robotiq" file="robotiq_2f85/2f85.xml"/>
+    <mesh name="wrist_d435" file="../../../../meshes/d435.stl"/>
+    <material name="wrist_d435_white" rgba="1 1 1 1" specular="0" shininess="0.25"/>
     <material class="ur5e" name="black" rgba="0.033 0.033 0.033 1"/>
     <material class="ur5e" name="jointgray" rgba="0.278 0.278 0.278 1"/>
     <material class="ur5e" name="linkgray" rgba="0.82 0.82 0.82 1"/>
@@ -114,11 +116,18 @@
                   <geom class="eef_collision" pos="0 0.08 0" quat="1 1 0 0" size="0.04 0.02"/>
                   <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/>
                   <frame pos="0 0.1 0" quat="-1 1 0 0">
-                    <attach model="robotiq" body="base_mount" prefix="robotiq_"/>
-                    <site name="tcp" pos="0 0 0.155"/>
-                    <camera name="wrist_cam" pos="0.08 0 0.16" xyaxes="0 1 0 0.97 0 0.243" fovy="73"/>
-                    <geom type="box" pos="0.085 0 0.15" size="0.008 0.015 0.01"
-                      rgba="0.06 0.06 0.06 1" contype="0" conaffinity="0" mass="0"/>
+                    <!-- Wrist D435 on the flange -Y side. Rotating the shared frame
+                         keeps the RGB optical frame rigidly aligned with the case. -->
+                    <frame pos="0 -0.062 0.06" quat="0 0 0 1">
+                      <geom name="wrist_d435_body" type="mesh" mesh="wrist_d435"
+                        material="wrist_d435_white" contype="0" conaffinity="0" mass="0"/>
+                      <camera name="wrist_cam" pos="0.0325 0 0"
+                        xyaxes="-1 0 0 0 1 0" fovy="69"/>
+                    </frame>
+                    <frame>
+                      <attach model="robotiq" body="base_mount" prefix="robotiq_"/>
+                      <site name="tcp" pos="0 0 0.155"/>
+                    </frame>
                   </frame>
                 </body>
               </body>

@@ -1,8 +1,8 @@
 """MuJoCo physics state and robot-independent actuator control."""
 import numpy as np
 
-from robot_core import get_robot
-from robot_core.models import load_scene
+from robot_adapters import get_robot
+from robot_adapters.models import load_scene
 
 
 class MujocoSimulation:

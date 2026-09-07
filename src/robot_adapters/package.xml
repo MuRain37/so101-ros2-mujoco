@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>robot_core</name><version>0.1.0</version>
+  <name>robot_adapters</name><version>0.1.0</version>
   <description>Robot state/action adapters and model resource loading.</description>
   <maintainer email="murain@example.com">murain</maintainer><license>Apache-2.0</license>
   <exec_depend>ament_index_python</exec_depend><exec_depend>robot_description</exec_depend>

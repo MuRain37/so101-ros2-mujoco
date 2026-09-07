@@ -15,8 +15,8 @@ from std_srvs.srv import Trigger
 
 from .camera import create_global_d435, create_wrist_camera
 from .simulation import MujocoSimulation
-from robot_core import get_robot
-from robot_core.models import legacy_assets
+from robot_adapters import get_robot
+from robot_adapters.models import legacy_assets
 from .tasks import create_task
 
 

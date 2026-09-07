@@ -8,7 +8,7 @@ from sensor_msgs.msg import JointState
 
 from mujoco_sim.simulator import MujocoSimulator
 from teleop_retargeting.node import RetargetNode
-from robot_core import get_robot
+from robot_adapters import get_robot
 
 
 def test_reset_rejects_previous_commands_and_timeout_reprimes():

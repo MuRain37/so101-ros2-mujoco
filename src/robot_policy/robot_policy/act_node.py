@@ -14,7 +14,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState
 from std_srvs.srv import Trigger
-from robot_core import get_robot
+from robot_adapters import get_robot
 
 
 def validate_policy(config, robot, policy_path):

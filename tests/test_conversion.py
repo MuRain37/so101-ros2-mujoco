@@ -6,7 +6,7 @@ import rosbag2_py
 from rclpy.serialization import serialize_message
 from sensor_msgs.msg import Image, JointState
 
-from robot_core import get_robot
+from robot_adapters import get_robot
 from vla_dataset.convert_mcap_to_lerobot import main, TOPICS
 
 

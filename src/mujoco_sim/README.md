@@ -64,6 +64,11 @@ visual meshes, is Apache-2.0 licensed, and has no collision geometry. A virtual
 camera inside the body publishes aligned RGB-D images. The bundled license is installed by the
 `robot_description` package.
 
+The UR5e wrist uses the same RealSense D435 case model, mounted above the
+Robotiq 2F-85 and looking along the gripper axis. Its RGB view is published as
+`/wrist_cam/image_raw`; only the D435 case is installed, without a separate
+mounting-bracket mesh.
+
 ## Global D435 topics
 
 The fixed D435 publishes aligned streams at 640 x 480 and 30 simulation-time Hz:

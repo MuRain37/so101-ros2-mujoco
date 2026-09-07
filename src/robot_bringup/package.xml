@@ -18,7 +18,7 @@
   <exec_depend>vla_dataset</exec_depend>
   <exec_depend>robot_policy</exec_depend>
   <exec_depend>teleop_retargeting</exec_depend>
-  <exec_depend>robot_core</exec_depend>
+  <exec_depend>robot_adapters</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

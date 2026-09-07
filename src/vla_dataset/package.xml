@@ -10,7 +10,7 @@
   <depend>rcl_interfaces</depend>
   <depend>std_srvs</depend>
   <exec_depend>mujoco_sim</exec_depend>
-  <exec_depend>robot_core</exec_depend>
+  <exec_depend>robot_adapters</exec_depend>
   <exec_depend>python_qt_binding</exec_depend>
   <exec_depend>ros2bag</exec_depend>
   <exec_depend>rosbag2_py</exec_depend>

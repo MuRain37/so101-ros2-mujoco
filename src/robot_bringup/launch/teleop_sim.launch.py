@@ -6,6 +6,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from launch.actions import OpaqueFunction
 from robot_bringup.validation import validate_task
@@ -29,12 +30,21 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("robot_id", default_value="auto"),
-            DeclareLaunchArgument("position_scale", default_value="2.0"),
-            DeclareLaunchArgument("orientation_scale", default_value="1.0"),
-            DeclareLaunchArgument("leader_min_height", default_value="0.011"),
-            DeclareLaunchArgument("follower_min_height", default_value="0.015"),
-            DeclareLaunchArgument("leader_range", default_value=""),
-            DeclareLaunchArgument("follower_range", default_value=""),
+            DeclareLaunchArgument(
+                "follower_workspace",
+                default_value="0.10 0.45 -0.25 0.25 0.015 0.35",
+                description="UR5e TCP bounds: xmin xmax ymin ymax zmin zmax.",
+            ),
+            DeclareLaunchArgument(
+                "max_joint_speed",
+                default_value="3.0",
+                description="UR5e retargeting joint-speed limit in rad/s.",
+            ),
+            DeclareLaunchArgument(
+                "gripper_open_fraction",
+                default_value="1.0",
+                description="SO101 opening fraction that fully opens the UR5e gripper.",
+            ),
             RegisterEventHandler(OnProcessExit(on_exit=[
                 EmitEvent(event=Shutdown(reason="teleop component exited"))
             ])),
@@ -92,12 +102,13 @@ def generate_launch_description():
                 parameters=[{
                     "robot_id": LaunchConfiguration("robot_id"),
                     "task_id": LaunchConfiguration("dataset_task_id"),
-                    "position_scale": LaunchConfiguration("position_scale"),
-                    "orientation_scale": LaunchConfiguration("orientation_scale"),
-                    "leader_min_height": LaunchConfiguration("leader_min_height"),
-                    "follower_min_height": LaunchConfiguration("follower_min_height"),
-                    "leader_range": LaunchConfiguration("leader_range"),
-                    "follower_range": LaunchConfiguration("follower_range"),
+                    "follower_workspace": LaunchConfiguration("follower_workspace"),
+                    "max_joint_speed": ParameterValue(
+                        LaunchConfiguration("max_joint_speed"), value_type=float
+                    ),
+                    "gripper_open_fraction": ParameterValue(
+                        LaunchConfiguration("gripper_open_fraction"), value_type=float
+                    ),
                 }],
             ),
             Node(

@@ -11,7 +11,7 @@ import numpy as np
 import rosbag2_py
 from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import Image, JointState
-from robot_core import get_robot
+from robot_adapters import get_robot
 from mujoco_sim.tasks import create_task
 
 TOPICS = {"/d435/color/image_raw": Image, "/wrist_cam/image_raw": Image,

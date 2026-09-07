@@ -8,20 +8,20 @@ from rclpy.node import Node
 from rclpy.executors import ExternalShutdownException
 from sensor_msgs.msg import JointState
 
-from robot_core import get_robot
-from robot_core.models import load_robot_model, load_scene
+from robot_adapters import get_robot
+from robot_adapters.models import load_robot_model, load_scene
 from mujoco_sim.tasks import create_task
 from .controller import PoseRetargeter
 
 
-def parse_range(value):
-    """Parse "xmin xmax ymin ymax zmin zmax"; empty means no range override."""
-    text = str(value).strip()
-    if not text:
-        return None
-    parts = text.split()
+def parse_workspace(value):
+    """Parse "xmin xmax ymin ymax zmin zmax"."""
+    parts = str(value).split()
     if len(parts) != 6:
-        raise ValueError("range must contain six numbers: xmin xmax ymin ymax zmin zmax")
+        raise ValueError(
+            "follower_workspace must contain six numbers: "
+            "xmin xmax ymin ymax zmin zmax"
+        )
     return [float(part) for part in parts]
 
 
@@ -29,10 +29,9 @@ class RetargetNode(Node):
     def __init__(self):
         super().__init__("teleop_retargeting")
         for name, default in (("robot_id", "auto"), ("task_id", "red_cube_to_red_target"),
-                              ("position_scale", 2.0), ("orientation_scale", 1.0),
-                              ("leader_min_height", 0.011), ("follower_min_height", 0.015),
-                              ("leader_range", ""), ("follower_range", ""),
-                              ("rate", 50.0), ("max_joint_speed", 0.8), ("input_timeout", 0.25)):
+                              ("follower_workspace", "0.10 0.45 -0.25 0.25 0.015 0.35"),
+                              ("gripper_open_fraction", 1.0),
+                              ("rate", 50.0), ("max_joint_speed", 3.0), ("input_timeout", 0.25)):
             self.declare_parameter(name, default)
         value = lambda name: self.get_parameter(name).value
         task = create_task(str(value("task_id")))
@@ -44,23 +43,25 @@ class RetargetNode(Node):
         else:
             scene = Path(get_package_share_directory("mujoco_sim")) / "mujoco" / task.scene_file
             self.controller = PoseRetargeter(
-                load_robot_model(get_robot("so101")), load_scene(scene), self.robot.robot_id,
-                float(value("position_scale")), float(value("orientation_scale")),
-                float(value("leader_min_height")), float(value("follower_min_height")),
-                parse_range(value("leader_range")), parse_range(value("follower_range")),
-                float(value("max_joint_speed")))
+                load_robot_model(get_robot("so101")),
+                load_scene(scene),
+                self.robot.robot_id,
+                follower_workspace=parse_workspace(value("follower_workspace")),
+                gripper_open_fraction=float(value("gripper_open_fraction")),
+                max_joint_speed=float(value("max_joint_speed")),
+            )
         self.source = get_robot("so101")
         self.leader = self.state = self.header = None
         self.leader_time = self.state_time = 0.0
         self.last_source_stamp = -1
         self.timeout = float(value("input_timeout"))
         rate = float(value("rate"))
-        positive = (rate, self.timeout, float(value("position_scale")), float(value("max_joint_speed")))
+        positive = (rate, self.timeout, float(value("max_joint_speed")))
         if not all(math.isfinite(x) and x > 0 for x in positive):
-            raise ValueError("retargeting rate, timeout, scale and speed must be positive")
-        orientation_scale = float(value("orientation_scale"))
-        if not math.isfinite(orientation_scale) or orientation_scale < 0:
-            raise ValueError("orientation_scale must be finite and non-negative")
+            raise ValueError("retargeting rate, timeout and speed must be positive")
+        gripper_open_fraction = float(value("gripper_open_fraction"))
+        if not math.isfinite(gripper_open_fraction) or not 0 < gripper_open_fraction <= 1:
+            raise ValueError("gripper_open_fraction must be in (0, 1]")
         self.previous_tick = time.monotonic()
         self.create_subscription(JointState, "/leader/joint_states", self.on_leader, 1)
         self.create_subscription(JointState, "/sim/joint_states", self.on_state, 1)

@@ -9,7 +9,7 @@ MCAP 数据录制、LeRobot 格式转换以及 ACT 策略推理。
 | 功能包 | 职责 |
 | --- | --- |
 | `robot_description` | 机械臂 MJCF、URDF 和网格资源；上游模型及许可证 |
-| `robot_core` | SO101 / UR5e 状态与动作适配器、初始姿态、模型资源加载 |
+| `robot_adapters` | SO101 / UR5e 状态与动作适配器、初始姿态、模型资源加载 |
 | `mujoco_sim` | 物理仿真、相机、环境，以及任务场景选择和复位 |
 | `so101_leader_bridge` | 通过串口采集实体 SO101 主臂数据，并应用标定 |
 | `teleop_retargeting` | SO101 直接关节映射，或固定桌面基准的 UR5e 绝对位姿重定向 |
@@ -79,25 +79,33 @@ ros2 launch mujoco_sim display.launch.py \
 同一个串口设备只允许一个主臂驱动进程打开。
 遥操作或推理启动组中的必要进程退出时，会关闭同组其他进程，避免残留驱动。
 
-UR5e 使用固定桌面基准的绝对位姿映射：对 SO101 主臂做正运动学得到夹爪参考点
-的位置和姿态。水平位置以两台机械臂各自的 home 位姿为固定参考点，按
-`position_scale:=2.0` 缩放；高度方向先把主臂高度减去 `leader_min_height`，
-缩放后再加回 `follower_min_height`，保证主臂夹爪降到最低位置时，UR5e 夹爪
-也降到自己的最低抓取位置。姿态以两台机械臂各自的“夹爪竖直向下”姿态为基准，
-把主臂相对该基准的世界旋转 1:1 映射到 UR5e（倍率为 `orientation_scale:=1.0`），
-因此主臂夹爪指向桌面时 UR5e 夹爪也指向桌面。映射只依赖主臂当前关节角和模型常量，
-与遥操作启动时主臂或从臂摆在哪里无关；复位或重启不会改变对应关系。
-夹爪开合继续跟随主臂，并受关节速度限制；收到首帧数据后 UR5e 即以限速移动到
-主臂当前姿态对应的目标位姿。
-`leader_min_height` 与 `follower_min_height` 的默认值由当前仿真夹爪几何推导
-（夹爪参考点在其指尖刚好接触桌面时相对桌面的高度），实体安装时应按实际
-夹爪重新标定并覆盖这两个启动参数。
-如果需要把 SO101 的整段操作范围线性映射到 UR5e 的目标范围并限制其输出不越界，
-可同时给出 `leader_range` 与 `follower_range`，格式为
-`xmin xmax ymin ymax zmin zmax`；设置后这两个范围取代位置倍率与最低高度公式，
-姿态仍按 `orientation_scale` 跟随主臂。
-UR5e 输入中断超过 0.25 秒时保持最后的目标；恢复新数据后按新的绝对目标
-继续，不会自动归位。
+UR5e 使用完整末端位姿映射：先对 SO101 主臂做正运动学，得到夹爪 TCP 的位置
+和姿态。SO101 在自身基座坐标系中的固定有效空间，会逐轴线性映射到
+`follower_workspace` 指定的 UR5e 基座坐标系范围。SO101 到达某一轴的有效范围
+边界时，UR5e 就到达对应的工作空间边界；超出部分会被限制在边界上。默认 UR5e
+范围为 `X 0.10～0.45、Y -0.25～0.25、Z 0.015～0.35 m`。姿态通过两种夹爪 TCP
+坐标轴之间的固定转换直接映射，因此主臂夹爪垂直桌面时，UR5e 夹爪也垂直桌面。
+映射只依赖主臂当前关节角和模型常量，与遥操作启动时主臂或从臂摆在哪里无关；
+复位或重启不会改变对应关系。夹爪开合继续跟随主臂，并受关节速度限制；收到
+首帧数据后 UR5e 即以限速移动到主臂当前姿态对应的目标位姿。
+
+UR5e 输入中断超过 0.25 秒时保持最后的目标；恢复新数据后按新的绝对目标继续，
+不会自动归位。调整映射范围时只需设置 `follower_workspace`：
+
+```bash
+ros2 launch robot_bringup teleop_sim.launch.py \
+  dataset_task_id:=ur5e_red_cube_to_target \
+  follower_workspace:="0.10 0.45 -0.25 0.25 0.015 0.35"
+```
+
+夹爪映射可通过 `gripper_open_fraction` 调整。比如设为 `0.6` 时，SO101
+打开到自身行程的 60% 就会让 UR5e 夹爪完全张开：
+
+```bash
+ros2 launch robot_bringup teleop_sim.launch.py \
+  dataset_task_id:=ur5e_red_cube_to_target \
+  gripper_open_fraction:=0.6
+```
 
 SO101 收到有效主臂消息后立即转发完整关节目标，不做 FK/IK、相对位姿锚定或
 渐进限速，也不经过额外的定时转发。保留关节限位、无效数据检查和复位轮次隔离。
@@ -137,7 +145,9 @@ wrist_1_joint, wrist_2_joint, wrist_3_joint, gripper`。
 UR5e 重定向将关节速度限制为 0.8 rad/s，并检查逆运动学（IK）是否收敛及关节限位。
 它**不是无碰撞运动规划器**，也不控制实体 UR 机械臂。
 操作时应避免机械臂穿过桌面或物体，以及进入奇异姿态。
-UR 腕部相机外壳是简化的仿真外观，不是可直接加工制造的精确安装组件。
+UR5e 腕部相机使用与全局相机相同的 RealSense D435 外壳模型（源自 MuJoCo
+Menagerie 的 D435i 视觉网格），以简化支架安装在 Robotiq 2F-85 上方、镜头
+沿夹爪方向取景；它只用于仿真外观，不包含可直接加工制造的安装支架。
 
 ## LeRobot 格式转换与推理
 
@@ -169,7 +179,7 @@ ros2 launch robot_bringup act_sim.launch.py \
 
 ## 扩展其他机械臂
 
-将模型添加到 `robot_description/mjcf`，在 `robot_core/robots.py` 中实现并注册适配器，
+将模型添加到 `robot_description/mjcf`，在 `robot_adapters/robots.py` 中实现并注册适配器，
 再创建独立任务类，声明 `task_id`、`robot_id`、`scene_file` 和复位逻辑，注册到任务表。
 不同场景可以复用同一机械臂模型，但每个场景只绑定一款机械臂。
 适配器需要声明对外关节名称、用于读取限位的模型关节、执行器映射、初始姿态和 TCP。

@@ -139,7 +139,12 @@ class SO101LeaderDriver(Node):
             )
         except Exception as e:  # noqa: BLE001
             self.ser = None
-            raise RuntimeError(f"cannot exclusively open leader serial port: {e}") from e
+            self._fail_count += 1
+            if self._fail_count == 1 or self._fail_count % 100 == 0:
+                self.get_logger().warn(
+                    f"cannot open leader serial port "
+                    f"{self.get_parameter('port').value}: {e}; retrying"
+                )
 
     def _read_motor(self, pid):
         """Read one motor's raw position, retrying once on failure."""

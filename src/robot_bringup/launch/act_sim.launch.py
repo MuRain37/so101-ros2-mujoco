@@ -25,11 +25,18 @@ def generate_launch_description():
             "robot_id": LaunchConfiguration("robot_id"),
             "random_seed": LaunchConfiguration("random_seed"),
             "task_id": LaunchConfiguration("task_id"),
+            "follower_workspace": LaunchConfiguration("follower_workspace"),
+            "gripper_open_fraction": LaunchConfiguration("gripper_open_fraction"),
         }.items(),
     )
     return LaunchDescription(
         [
             DeclareLaunchArgument("robot_id", default_value="auto"),
+            DeclareLaunchArgument(
+                "follower_workspace",
+                default_value="0.10 0.45 -0.25 0.25 0.015 0.35",
+            ),
+            DeclareLaunchArgument("gripper_open_fraction", default_value="1.0"),
             RegisterEventHandler(OnProcessExit(on_exit=[
                 EmitEvent(event=Shutdown(reason="inference component exited"))
             ])),
@@ -56,6 +63,7 @@ def generate_launch_description():
                 parameters=[
                     {
                         "policy_path": LaunchConfiguration("policy_path"),
+                        "task_id": LaunchConfiguration("task_id"),
                         "robot_id": LaunchConfiguration("robot_id"),
                         "device": LaunchConfiguration("device"),
                         "inference_rate": LaunchConfiguration("inference_rate"),

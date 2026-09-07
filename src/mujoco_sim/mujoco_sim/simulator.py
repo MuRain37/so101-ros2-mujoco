@@ -13,10 +13,11 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
 
-from .camera import create_global_d435, create_wrist_camera
+from .camera import MujocoCameraPublisher
 from .simulation import MujocoSimulation
 from robot_adapters import get_robot
 from robot_adapters.models import legacy_assets
+from robot_adapters.retargeting import parse_workspace
 from .tasks import create_task
 
 
@@ -38,8 +39,15 @@ class MujocoSimulator(Node):
         self.declare_parameter("realtime_factor", 1.0)
         self.declare_parameter("max_substeps", 20)
         self.declare_parameter("random_seed", -1)
-        self._wrist_camera = create_wrist_camera(self)
-        self._global_d435 = create_global_d435(self)
+        self.declare_parameter(
+            "follower_workspace", "0.10 0.45 -0.25 0.25 0.015 0.35"
+        )
+        self.declare_parameter("gripper_open_fraction", 1.0)
+        self.declare_parameter("camera_enabled", True)
+        self._cameras = (
+            [MujocoCameraPublisher(self, spec) for spec in self._task.cameras]
+            if self.get_parameter("camera_enabled").value else []
+        )
 
         input_topic = self.get_parameter("joint_state_topic").value
         output_topic = self.get_parameter("sim_joint_state_topic").value
@@ -178,7 +186,19 @@ class MujocoSimulator(Node):
             if model_path == self.default_model_path()
             else None
         )
-        simulation = MujocoSimulation(model_path, assets, self._task, self._rng, self._robot_id)
+        simulation = MujocoSimulation(
+            model_path,
+            assets,
+            self._task,
+            self._rng,
+            self._robot_id,
+            follower_workspace=parse_workspace(
+                self.get_parameter("follower_workspace").value
+            ),
+            gripper_open_fraction=float(
+                self.get_parameter("gripper_open_fraction").value
+            ),
+        )
         self._simulation = simulation
         model = simulation.model
         data = simulation.data
@@ -195,11 +215,12 @@ class MujocoSimulator(Node):
             f"timestep={timestep}s)"
         )
 
-        self._wrist_camera.start(mujoco, model)
         try:
-            self._global_d435.start(mujoco, model)
+            for camera in self._cameras:
+                camera.start(mujoco, model)
         except Exception:
-            self._wrist_camera.close()
+            for camera in self._cameras:
+                camera.close()
             raise
         accumulator = 0.0
         last_wall_time = time.perf_counter()
@@ -212,8 +233,8 @@ class MujocoSimulator(Node):
                     rclpy.spin_once(self, timeout_sec=0.001)
                     if data.time < last_sim_time:
                         self._reset_task("reset")
-                        self._wrist_camera.reset_timing(data.time)
-                        self._global_d435.reset_timing(data.time)
+                        for camera in self._cameras:
+                            camera.reset_timing(data.time)
                         accumulator = 0.0
                         last_wall_time = time.perf_counter()
 
@@ -234,13 +255,13 @@ class MujocoSimulator(Node):
                         )
 
                     self._publish_simulated_state()
-                    self._wrist_camera.publish_if_due(data, self._sim_stamp)
-                    self._global_d435.publish_if_due(data, self._sim_stamp)
+                    for camera in self._cameras:
+                        camera.publish_if_due(data, self._sim_stamp)
                     last_sim_time = data.time
                     native_viewer.sync()
         finally:
-            self._wrist_camera.close()
-            self._global_d435.close()
+            for camera in self._cameras:
+                camera.close()
 
 
 def main(args=None) -> None:

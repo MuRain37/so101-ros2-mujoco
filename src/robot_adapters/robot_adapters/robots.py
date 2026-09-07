@@ -55,8 +55,11 @@ class RobotAdapter(ABC):
             q, v = self.model.jnt_qposadr[j], self.model.jnt_dofadr[j]
             data.qpos[q] = self.model.qpos0[q]
             data.qvel[v] = data.qacc_warmstart[v] = data.qfrc_applied[v] = 0
-        data.qpos[self.qadr] = self.home
+        self.set_positions(data, self.home)
         self.apply(data, np.array(self.home))
+
+    def set_positions(self, data, positions):
+        data.qpos[self.qadr] = positions
 
     @abstractmethod
     def apply(self, data, targets):
@@ -107,6 +110,11 @@ class UR5eRobotiqAdapter(RobotAdapter):
     minimum_tcp_height = 0.015
     tcp_site = "tcp"
     model_file = "ur5e/ur5e_robotiq.xml"
+
+    def set_positions(self, data, positions):
+        super().set_positions(data, positions)
+        left = self.model.joint("robotiq_left_driver_joint").qposadr[0]
+        data.qpos[left] = positions[-1]
 
     def positions(self, data):
         result = super().positions(data)

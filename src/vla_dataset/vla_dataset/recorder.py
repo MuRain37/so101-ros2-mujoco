@@ -11,6 +11,7 @@ from pathlib import Path
 
 import rclpy
 from mujoco_sim.tasks import create_task
+from mujoco_sim.tasks.base import camera_manifest, camera_streams
 from robot_adapters import get_robot
 import rosbag2_py
 from rclpy.executors import ExternalShutdownException
@@ -18,16 +19,9 @@ from rclpy.node import Node
 from std_srvs.srv import Trigger
 
 
-DEFAULT_BAG_TOPICS = (
-    "/clock", "/leader/joint_states", "/robot/joint_targets", "/sim/joint_states", "/sim/action",
-    "/wrist_cam/image_raw", "/wrist_cam/camera_info",
-    "/d435/color/image_raw", "/d435/color/camera_info",
-    "/d435/depth/image_raw", "/d435/depth/camera_info",
-)
-CAMERA_IMAGE_TOPICS = (
-    "/wrist_cam/image_raw",
-    "/d435/color/image_raw",
-    "/d435/depth/image_raw",
+BASE_BAG_TOPICS = (
+    "/clock", "/leader/joint_states", "/robot/joint_targets",
+    "/sim/joint_states", "/sim/action",
 )
 
 
@@ -41,9 +35,11 @@ class DatasetRecorder(Node):
         self.declare_parameter("robot_id", "auto")
         self._task = create_task(str(self.get_parameter("task_id").value))
         self._robot = get_robot(self._task.resolve_robot(str(self.get_parameter("robot_id").value)))
-        self.declare_parameter("bag_topics", list(DEFAULT_BAG_TOPICS))
+        self._topics = list(BASE_BAG_TOPICS)
+        for _, _, stream in camera_streams(self._task.cameras):
+            self._topics.extend((stream.topic, stream.info_topic))
         self.declare_parameter("startup_timeout", 5.0)
-        self.declare_parameter("minimum_camera_rate", 27.0)
+        self.declare_parameter("minimum_camera_rate_ratio", 0.9)
         self._process = None
         self._episode_dir = None
         self._bag_dir = None
@@ -72,7 +68,7 @@ class DatasetRecorder(Node):
             return response
         self._process = None
 
-        topics = list(self.get_parameter("bag_topics").value)
+        topics = self._topics
         available = {name for name, _ in self.get_topic_names_and_types()}
         missing = sorted(set(topics) - available)
         if missing:
@@ -121,6 +117,8 @@ class DatasetRecorder(Node):
             "task": self._task.language_instruction,
             "format": "rosbag2_mcap",
             "topics": topics,
+            "cameras": camera_manifest(self._task.cameras),
+            "primary_camera_id": self._task.primary_camera_id,
             "status": "recording",
         }
         self._write_manifest()
@@ -166,17 +164,22 @@ class DatasetRecorder(Node):
         if missing:
             errors.append("missing or empty topics: " + ", ".join(missing))
 
-        minimum_rate = float(self.get_parameter("minimum_camera_rate").value)
+        minimum_ratio = float(
+            self.get_parameter("minimum_camera_rate_ratio").value
+        )
+        if not 0 < minimum_ratio <= 1:
+            errors.append("minimum_camera_rate_ratio must be in (0, 1]")
         camera_rates = {}
         if duration > 0:
-            for topic in CAMERA_IMAGE_TOPICS:
-                if topic in self._manifest["topics"]:
-                    rate = counts.get(topic, 0) / duration
-                    camera_rates[topic] = round(rate, 3)
-                    if rate < minimum_rate:
-                        errors.append(
-                            f"{topic} rate {rate:.2f} Hz is below {minimum_rate:.2f} Hz"
-                        )
+            for camera, _, stream in camera_streams(self._task.cameras):
+                rate = counts.get(stream.topic, 0) / duration
+                camera_rates[stream.topic] = round(rate, 3)
+                minimum_rate = camera.fps * minimum_ratio
+                if rate < minimum_rate:
+                    errors.append(
+                        f"{stream.topic} rate {rate:.2f} Hz is below "
+                        f"{minimum_rate:.2f} Hz"
+                    )
 
         return not errors, {
             "duration_seconds": round(duration, 3),

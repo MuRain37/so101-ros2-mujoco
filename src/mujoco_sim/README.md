@@ -61,7 +61,7 @@ and fitted cradle. The structure follows the modular layout of the
 while its dimensions are adapted to this scene's fixed D435 pose and enclosure.
 It is a single white STL merged from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/realsense_d435i)
 visual meshes, is Apache-2.0 licensed, and has no collision geometry. A virtual
-camera inside the body publishes aligned RGB-D images. The bundled license is installed by the
+camera inside the body publishes the streams declared by the selected task. The bundled license is installed by the
 `robot_description` package.
 
 The UR5e wrist uses the same RealSense D435 case model, mounted above the
@@ -69,57 +69,36 @@ Robotiq 2F-85 and looking along the gripper axis. Its RGB view is published as
 `/wrist_cam/image_raw`; only the D435 case is installed, without a separate
 mounting-bracket mesh.
 
-## Global D435 topics
+## Task camera streams
 
-The fixed D435 publishes aligned streams at 640 x 480 and 30 simulation-time Hz:
+Each task declares its cameras in the corresponding Python task class. The
+simulator creates publishers only for those declarations, so tasks may use
+different camera counts without changing simulator code. The four bundled tasks
+currently publish two RGB streams at 640 x 480 and 30 simulation-time Hz:
 
 ```text
 /d435/color/image_raw       sensor_msgs/msg/Image (rgb8)
 /d435/color/camera_info     sensor_msgs/msg/CameraInfo
-/d435/depth/image_raw       sensor_msgs/msg/Image (32FC1, metres)
-/d435/depth/camera_info     sensor_msgs/msg/CameraInfo
+/wrist_cam/image_raw        sensor_msgs/msg/Image (rgb8)
+/wrist_cam/camera_info      sensor_msgs/msg/CameraInfo
 ```
 
-All four messages use `global_d435_optical_frame` and the same MuJoCo timestamp.
-Use `d435_enabled:=false` to disable this renderer, or configure
-`d435_width`, `d435_height`, and `d435_publish_rate`. For example:
+The camera framework also supports optional metric depth streams (`32FC1`,
+metres). A depth topic is created only when the selected task declares it; none
+of the bundled tasks currently does.
 
-```bash
-ros2 topic hz /d435/color/image_raw
-ros2 topic hz /d435/depth/image_raw
-rqt_image_view /d435/color/image_raw
-```
-
-## Compressed RGB preview
-
-For smooth local preview, use the JPEG topics instead of the raw recording topics:
+Compressed preview publishers are created dynamically for RGB streams that
+declare a preview topic. The bundled tasks provide:
 
 ```bash
 rqt_image_view /wrist_cam/image_preview/compressed
 rqt_image_view /d435/color/image_preview/compressed
 ```
 
-Set `camera_preview_enabled:=false` to disable both preview republishers. Raw RGB-D topics remain unchanged for rosbag recording.
-
-## Wrist-camera topics
-
-The Viewer publishes `rgb8` images on `/wrist_cam/image_raw` and matching
-`CameraInfo` on `/wrist_cam/camera_info`, using sensor-data QoS and the
-`wrist_cam_optical_frame` frame ID. Both messages use the same MuJoCo time stamp
-as `/clock`. Defaults are 640 x 480 at 30 simulation-time Hz. Configure them at
-launch time, for example:
-
-```bash
-ros2 launch mujoco_sim display.launch.py \
-  camera_width:=640 camera_height:=480 camera_publish_rate:=30.0
-```
-
-Disable offscreen rendering with `camera_enabled:=false`. Check the stream with:
-
-```bash
-ros2 topic hz /wrist_cam/image_raw
-ros2 topic echo /wrist_cam/camera_info --once
-```
+Set `camera_preview_enabled:=false` to disable previews, or
+`camera_enabled:=false` to disable all task camera rendering. Camera names,
+resolution, rate, topics, frame IDs, and output types are owned by the task
+configuration.
 
 ## Leader-arm teleoperation
 

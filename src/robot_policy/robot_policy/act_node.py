@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a dimension-compatible LeRobot ACT policy against the selected robot."""
+"""Run a task-compatible LeRobot ACT policy against the selected robot."""
 
 from pathlib import Path
 import json
@@ -10,6 +10,9 @@ import torch
 from lerobot.policies.act.modeling_act import ACTPolicy
 from lerobot.policies.factory import make_pre_post_processors
 from lerobot.utils.control_utils import predict_action
+from mujoco_sim.camera import depth_training_image, rgb_image_array
+from mujoco_sim.tasks import create_task
+from mujoco_sim.tasks.base import camera_streams
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState
@@ -17,12 +20,30 @@ from std_srvs.srv import Trigger
 from robot_adapters import get_robot
 
 
-def validate_policy(config, robot, policy_path):
+def validate_policy(config, robot, policy_path, task):
     expected = (len(robot.joint_names),)
     for key, features in (("observation.state", config.input_features),
                           ("action", config.output_features)):
         if key not in features or tuple(features[key].shape) != expected:
-            raise ValueError(f"policy {key} must have shape {expected} for {robot.robot_id}")
+            raise ValueError(
+                f"policy {key} must have shape {expected} for {robot.robot_id}"
+            )
+
+    expected_images = {
+        stream.observation_key: (3, camera.height, camera.width)
+        for camera, _, stream in camera_streams(task.cameras)
+    }
+    supplied_images = {
+        key: tuple(feature.shape)
+        for key, feature in config.input_features.items()
+        if key.startswith("observation.images.")
+    }
+    if supplied_images != expected_images:
+        raise ValueError(
+            f"policy camera inputs {supplied_images} do not match task "
+            f"camera inputs {expected_images}"
+        )
+
     metadata = Path(policy_path) / "robot.json"
     if metadata.is_file():
         supplied = json.loads(metadata.read_text())
@@ -31,36 +52,27 @@ def validate_policy(config, robot, policy_path):
                 raise ValueError(f"policy robot metadata mismatch: {key}")
 
 
-def image_array(message: Image) -> np.ndarray:
-    """Decode a ROS RGB image without cv_bridge's NumPy 1.x dependency."""
-    if message.encoding not in ("rgb8", "bgr8"):
-        raise ValueError(f"unsupported image encoding: {message.encoding}")
-    rows = np.frombuffer(message.data, dtype=np.uint8).reshape(
-        message.height, message.step
-    )
-    image = rows[:, : message.width * 3].reshape(
-        message.height, message.width, 3
-    ).copy()
-    return image if message.encoding == "rgb8" else image[:, :, ::-1].copy()
-
-
 class ACTPolicyNode(Node):
-    """Bridge MuJoCo observations to a LeRobot ACT policy action."""
+    """Bridge task-configured MuJoCo observations to an ACT policy action."""
 
     def __init__(self) -> None:
         super().__init__("act_policy")
         self.declare_parameter("policy_path", "")
-        self.declare_parameter("robot_id", "so101")
-        self._robot = get_robot(str(self.get_parameter("robot_id").value))
-        self._epoch = None
+        self.declare_parameter("task_id", "red_cube_to_red_target")
+        self.declare_parameter("robot_id", "auto")
         self.declare_parameter("device", "cuda")
         self.declare_parameter("inference_rate", 30.0)
-        self.declare_parameter("front_image_topic", "/d435/color/image_raw")
-        self.declare_parameter("wrist_image_topic", "/wrist_cam/image_raw")
         self.declare_parameter("state_topic", "/sim/joint_states")
         self.declare_parameter("command_topic", "/robot/joint_targets")
 
-        policy_path = Path(str(self.get_parameter("policy_path").value)).expanduser()
+        self._task = create_task(str(self.get_parameter("task_id").value))
+        self._robot = get_robot(
+            self._task.resolve_robot(str(self.get_parameter("robot_id").value))
+        )
+        self._epoch = None
+        policy_path = Path(
+            str(self.get_parameter("policy_path").value)
+        ).expanduser()
         if not policy_path.is_dir():
             raise FileNotFoundError(f"policy directory does not exist: {policy_path}")
         device_name = str(self.get_parameter("device").value)
@@ -70,8 +82,10 @@ class ACTPolicyNode(Node):
 
         from lerobot.configs.policies import PreTrainedConfig
         config = PreTrainedConfig.from_pretrained(policy_path)
-        validate_policy(config, self._robot, policy_path)
-        self._policy = ACTPolicy.from_pretrained(policy_path, config=config).to(self._device)
+        validate_policy(config, self._robot, policy_path, self._task)
+        self._policy = ACTPolicy.from_pretrained(
+            policy_path, config=config
+        ).to(self._device)
         self._preprocessor, self._postprocessor = make_pre_post_processors(
             policy_cfg=self._policy.config,
             pretrained_path=str(policy_path),
@@ -81,23 +95,21 @@ class ACTPolicyNode(Node):
         )
         self._policy.reset()
 
-        self._front_image = None
-        self._wrist_image = None
+        self._images = {
+            stream.observation_key: None
+            for _, _, stream in camera_streams(self._task.cameras)
+        }
         self._state = None
         self._waiting_logged = False
         self._reset_future = None
-        self.create_subscription(
-            Image,
-            str(self.get_parameter("front_image_topic").value),
-            self._on_front_image,
-            1,
-        )
-        self.create_subscription(
-            Image,
-            str(self.get_parameter("wrist_image_topic").value),
-            self._on_wrist_image,
-            1,
-        )
+        self._image_subscriptions = []
+        for camera, modality, stream in camera_streams(self._task.cameras):
+            callback = self._image_callback(
+                stream.observation_key, modality, camera.depth_range_m
+            )
+            self._image_subscriptions.append(
+                self.create_subscription(Image, stream.topic, callback, 1)
+            )
         self.create_subscription(
             JointState,
             str(self.get_parameter("state_topic").value),
@@ -115,13 +127,22 @@ class ACTPolicyNode(Node):
         if rate <= 0:
             raise ValueError("inference_rate must be greater than zero")
         self.create_timer(1.0 / rate, self._infer)
-        self.get_logger().info(f"loaded ACT policy from {policy_path} on {device_name}")
+        self.get_logger().info(
+            f"loaded ACT policy for {self._task.task_id} from "
+            f"{policy_path} on {device_name}"
+        )
 
-    def _on_front_image(self, message: Image) -> None:
-        self._front_image = image_array(message)
-
-    def _on_wrist_image(self, message: Image) -> None:
-        self._wrist_image = image_array(message)
+    def _image_callback(self, key, modality, depth_range_m):
+        def callback(message):
+            try:
+                self._images[key] = (
+                    rgb_image_array(message)
+                    if modality == "rgb"
+                    else depth_training_image(message, depth_range_m)
+                )
+            except ValueError as error:
+                self.get_logger().warning(str(error), throttle_duration_sec=2.0)
+        return callback
 
     def _on_state(self, message: JointState) -> None:
         if not message.header.frame_id.startswith(self._robot.robot_id + "/epoch/"):
@@ -131,12 +152,13 @@ class ACTPolicyNode(Node):
             self._policy.reset()
             self._clear_observations()
         try:
-            self._state = self._robot.ordered(message.name, message.position).astype(np.float32)
+            self._state = self._robot.ordered(
+                message.name, message.position
+            ).astype(np.float32)
         except ValueError as error:
             self.get_logger().warning(str(error), throttle_duration_sec=2.0)
 
     def _on_reset_episode(self, request, response):
-        """Pause inference and ask MuJoCo to start a fresh episode."""
         del request
         if self._reset_future is not None:
             response.success = False
@@ -155,13 +177,12 @@ class ACTPolicyNode(Node):
         return response
 
     def _clear_observations(self) -> None:
-        self._front_image = None
-        self._wrist_image = None
+        for key in self._images:
+            self._images[key] = None
         self._state = None
         self._waiting_logged = False
 
     def _finish_reset(self) -> bool:
-        """Return true while inference must remain paused for a reset."""
         if self._reset_future is None:
             return False
         if not self._reset_future.done():
@@ -176,29 +197,20 @@ class ACTPolicyNode(Node):
         else:
             log = self.get_logger().info if result.success else self.get_logger().error
             log(result.message)
-
-        # Discard observations delivered while MuJoCo handled the reset.
         self._clear_observations()
         return True
 
     def _infer(self) -> None:
         if self._finish_reset():
             return
-        if any(
-            item is None
-            for item in (self._front_image, self._wrist_image, self._state)
-        ):
+        if self._state is None or any(image is None for image in self._images.values()):
             if not self._waiting_logged:
                 self.get_logger().info(
-                    "waiting for both cameras and simulated joint state"
+                    "waiting for task cameras and simulated joint state"
                 )
                 self._waiting_logged = True
             return
-        observation = {
-            "observation.images.front": self._front_image,
-            "observation.images.wrist": self._wrist_image,
-            "observation.state": self._state,
-        }
+        observation = {**self._images, "observation.state": self._state}
         action = predict_action(
             observation,
             self._policy,

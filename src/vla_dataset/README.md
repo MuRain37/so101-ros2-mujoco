@@ -32,16 +32,14 @@ ros2 service call /dataset/stop_episode std_srvs/srv/Trigger "{}"
 ros2 service call /dataset/cancel_episode std_srvs/srv/Trigger "{}"
 ```
 
-每次开始服务会在 `dataset/raw/episode_YYYYMMDD_HHMMSS/` 创建一个 rosbag 目录，并录制
-`/clock`、关节状态、动作、腕部 RGB、D435 RGB、D435 深度及对应的
-`CameraInfo`。可通过 `dataset_output_dir` 和 `dataset_task_id`
-启动参数修改输出目录和任务实现；语言描述由任务类提供。`episode.json` 会同时记录 `task_id`
-与语言指令；成功检测暂未启用。
+每次开始服务会在 `dataset/raw/episode_YYYYMMDD_HHMMSS/` 创建一个 rosbag 目录。
+`/clock`、关节状态和动作固定录制；图像与 `CameraInfo` 话题由所选 Task 的
+相机配置自动追加。当前四个 Task 录制腕部 RGB 和全局 D435 RGB，不录制深度。
+`episode.json` 会保存 `task_id`、语言指令和完整相机 schema。
 
-开始服务会先确认全部话题存在并确认 rosbag2 成功启动。停止服务会检查必要
-话题非空，以及腕部 RGB、D435 RGB 和 D435 深度是否达到默认最低 27 Hz。
-检查结果和每个话题的消息数量会写入 `episode.json`；不合格数据会标记为
-`status: invalid`，并让停止服务返回失败。
+开始服务会确认 Task 要求的全部话题存在。停止服务会检查必要话题非空，并按
+相机声明频率的 90% 验证每条图像流。检查结果和消息数量写入 `episode.json`；
+不合格数据标记为 `status: invalid`。
 
 查看录制内容：
 

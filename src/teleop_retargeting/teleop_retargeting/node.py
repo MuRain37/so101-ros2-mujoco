@@ -11,18 +11,8 @@ from sensor_msgs.msg import JointState
 from robot_adapters import get_robot
 from robot_adapters.models import load_robot_model, load_scene
 from mujoco_sim.tasks import create_task
-from .controller import PoseRetargeter
+from robot_adapters.retargeting import PoseRetargeter, parse_workspace
 
-
-def parse_workspace(value):
-    """Parse "xmin xmax ymin ymax zmin zmax"."""
-    parts = str(value).split()
-    if len(parts) != 6:
-        raise ValueError(
-            "follower_workspace must contain six numbers: "
-            "xmin xmax ymin ymax zmin zmax"
-        )
-    return [float(part) for part in parts]
 
 
 class RetargetNode(Node):

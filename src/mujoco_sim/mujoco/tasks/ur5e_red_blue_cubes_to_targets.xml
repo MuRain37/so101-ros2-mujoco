@@ -1,11 +1,8 @@
-<mujoco model="red_cube_in_drawer">
+<mujoco model="ur5e_red_blue_cubes_to_targets">
     <!-- MuJoCo resolves meshes from the top-level scene compiler. -->
     <compiler meshdir="../../../robot_description/meshes" />
     <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81" />
-    <asset>
-        <model name="so101" file="../../../robot_description/mjcf/so101/so101_arm.xml" />
-    </asset>
-    <include file="../objects/metaworld_drawer_assets.xml" />
+    <asset><model name="ur5e" file="../../../robot_description/mjcf/ur5e/ur5e_robotiq.xml" /></asset>
 
     <default>
         <default class="table_visual">
@@ -42,9 +39,8 @@
     </asset>
 
     <worldbody>
-        <!-- Scene-specific mounting pose; keep the shared arm model unchanged. -->
-        <frame pos="-0.04 0 0">
-            <attach model="so101" body="base" prefix="" />
+        <frame pos="-0.35 -0.134 0" quat="0.70710678 0 0 -0.70710678">
+            <attach model="ur5e" body="base" prefix="" />
         </frame>
         <include file="../environments/simple_table.xml" />
         <!-- Table-mounted overhead stand sized for the fixed D435 pose below. -->
@@ -63,7 +59,7 @@
         </body>
         <!-- Suspended global D435: front face points down and back at the workspace. -->
         <body name="global_d435" pos="0.45 0 0.65"
-            xyaxes="0 1 0 0.923 0 -0.384">
+            xyaxes="0 1 0 0.8 0 -0.6">
             <!-- Rear plate and top/bottom rails leave the local +Z sensor face open. -->
             <geom name="d435_cradle_back" type="box" pos="0 0 -0.028"
                 size="0.05 0.017 0.003" material="camera_stand_black"
@@ -82,17 +78,23 @@
         </body>
         <light pos="0 0 3.5" dir="0 0 -1" directional="true" />
         <geom name="floor" size="0 0 0.05" pos="0 0 -0.76" type="plane" material="groundplane" />
-        <!-- Fixed cabinet; local -Y becomes world -X, toward the arm. -->
-        <body name="drawer_station" pos="0.34 0 0" quat="0.70710678 0 0 -0.70710678">
-            <include file="../objects/metaworld_drawer.xml" />
-        </body>
-        <!-- Random spawn area for the cube; reset samples x/y inside this box. -->
-        <site name="cube_spawn_area" type="box" pos="0.11 -0.18 0.001"
-            size="0.045 0.055 0.001" rgba="0 0 0 0" />
-        <body name="red_cube" pos="0.12 -0.16 0.013">
+        <site name="cube_spawn_area" type="box" pos="0.25 0 0.001"
+            size="0.045 0.045 0.001" rgba="0 0 0 0" />
+        <geom name="red_place_target" type="box" pos="0.25 -0.16 0.0005"
+            size="0.045 0.045 0.0005" rgba="1 0.1 0.1 0.65"
+            contype="0" conaffinity="0" group="2" />
+        <geom name="blue_place_target" type="box" pos="0.25 0.16 0.0005"
+            size="0.045 0.045 0.0005" rgba="0.1 0.3 1 0.65"
+            contype="0" conaffinity="0" group="2" />
+        <body name="red_cube" pos="0.25 0 0.013">
             <freejoint name="red_cube_free" />
             <geom name="red_cube_geom" type="box" size="0.012 0.012 0.012" mass="0.01"
                 rgba="1 0 0 1" />
+        </body>
+        <body name="blue_cube" pos="0.20 0.08 0.013">
+            <freejoint name="blue_cube_free" />
+            <geom name="blue_cube_geom" type="box" size="0.012 0.012 0.012" mass="0.01"
+                rgba="0.05 0.2 1 1" />
         </body>
     </worldbody>
 </mujoco>

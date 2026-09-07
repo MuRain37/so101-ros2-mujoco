@@ -139,8 +139,8 @@ wrist_1_joint, wrist_2_joint, wrist_3_joint, gripper`。
 它表示控制轮次，而不是 TF 坐标系。每次复位都会更新轮次，旧轮次的命令会被拒绝。
 自定义控制器必须复制当前状态消息中的轮次标识。
 相机消息仍使用光学坐标系标识和仿真时间戳；通过服务复位时，`/clock` 保持单调递增。
-图像话题仍为 `/wrist_cam/image_raw` 和 `/d435/color/image_raw`，
-同时保留全局深度图和压缩预览话题。
+现有任务的图像话题为 `/wrist_cam/image_raw` 和 `/d435/color/image_raw`。
+相机由任务类注册；当前四个任务只启用 RGB，不发布或录制深度。
 
 UR5e 重定向将关节速度限制为 0.8 rad/s，并检查逆运动学（IK）是否收敛及关节限位。
 它**不是无碰撞运动规划器**，也不控制实体 UR 机械臂。
@@ -160,11 +160,10 @@ ros2 run vla_dataset convert_mcap_to_lerobot \
 
 默认输入目录为 `dataset/raw`。转换时由任务确定机械臂，再同时按机械臂和任务筛选，
 不会混合 SO101 的六维动作与 UR5e 的七维动作。
-新录制回合包含 `robot_id`、`joint_names`、`joint_units`；
-缺少机械臂元数据的旧回合按 SO101 处理。
-导出结果包含 `meta/robot.json`。请将该文件复制到训练检查点的 `config.json`
-所在目录，文件名保持为 `robot.json`，以便明确校验机械臂身份。
-ACT 始终检查状态和动作维度，不能用 SO101 检查点控制 UR5e。
+新录制回合同时包含机械臂元数据和完整相机 schema；旧格式回合不再兼容。
+导出结果包含 `meta/robot.json` 和 `meta/cameras.json`。请将机械臂元数据复制到
+训练检查点的 `config.json` 所在目录并保持文件名为 `robot.json`。
+ACT 会按照 `task_id` 动态订阅视觉输入，并校验状态、动作和相机特征。
 训练 UR5e 策略需要重新录制 UR5e 示范数据，不能直接使用现有 SO101 数据。
 
 ```bash

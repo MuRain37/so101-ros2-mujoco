@@ -1,12 +1,13 @@
-"""UR5e version of the red-cube-to-target task."""
+"""UR5e version of the red-cube-in-drawer task."""
+
 from .base import CameraSpec, ImageStreamSpec
-from .red_cube_to_target import RedCubeToTargetTask
+from .red_cube_in_drawer import RedCubeInDrawerTask
 
 
-class UR5eRedCubeToTargetTask(RedCubeToTargetTask):
-    task_id = "ur5e_red_cube_to_target"
+class UR5eRedCubeInDrawerTask(RedCubeInDrawerTask):
+    task_id = "ur5e_red_cube_in_drawer"
     robot_id = "ur5e"
-    scene_file = "tasks/ur5e_red_cube_to_target.xml"
+    scene_file = "tasks/ur5e_red_cube_in_drawer.xml"
     reset_source_robot_id = "so101"
     cameras = (
         CameraSpec(

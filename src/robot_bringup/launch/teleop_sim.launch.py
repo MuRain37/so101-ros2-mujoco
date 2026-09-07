@@ -25,6 +25,8 @@ def generate_launch_description():
             "robot_id": LaunchConfiguration("robot_id"),
             "random_seed": LaunchConfiguration("random_seed"),
             "task_id": LaunchConfiguration("dataset_task_id"),
+            "follower_workspace": LaunchConfiguration("follower_workspace"),
+            "gripper_open_fraction": LaunchConfiguration("gripper_open_fraction"),
         }.items(),
     )
     return LaunchDescription(

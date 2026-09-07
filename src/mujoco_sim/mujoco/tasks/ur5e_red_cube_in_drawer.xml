@@ -1,9 +1,9 @@
-<mujoco model="red_cube_in_drawer">
+<mujoco model="ur5e_red_cube_in_drawer">
     <!-- MuJoCo resolves meshes from the top-level scene compiler. -->
     <compiler meshdir="../../../robot_description/meshes" />
     <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81" />
     <asset>
-        <model name="so101" file="../../../robot_description/mjcf/so101/so101_arm.xml" />
+        <model name="ur5e" file="../../../robot_description/mjcf/ur5e/ur5e_robotiq.xml" />
     </asset>
     <include file="../objects/metaworld_drawer_assets.xml" />
 
@@ -42,9 +42,8 @@
     </asset>
 
     <worldbody>
-        <!-- Scene-specific mounting pose; keep the shared arm model unchanged. -->
-        <frame pos="-0.04 0 0">
-            <attach model="so101" body="base" prefix="" />
+        <frame pos="-0.35 -0.134 0" quat="0.70710678 0 0 -0.70710678">
+            <attach model="ur5e" body="base" prefix="" />
         </frame>
         <include file="../environments/simple_table.xml" />
         <!-- Table-mounted overhead stand sized for the fixed D435 pose below. -->

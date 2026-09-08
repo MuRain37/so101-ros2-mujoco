@@ -299,7 +299,7 @@ def test_ur5e_physical_pick_and_place():
 
 
 def test_policy_shape_camera_schema_and_optional_metadata(tmp_path):
-    from robot_policy.act_node import validate_policy
+    from robot_policy.policy_node import validate_policy
     task = create_task("red_cube_to_red_target")
     inputs = {"observation.state": SimpleNamespace(shape=(6,))}
     for camera in task.cameras:

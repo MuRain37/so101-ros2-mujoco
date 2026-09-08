@@ -1,7 +1,7 @@
 # ROS 2 + MuJoCo 机器人学习工作空间
 
 支持 SO101 和 UR5e + Robotiq 2F-85 仿真、SO101 主臂遥操作、
-MCAP 数据录制、LeRobot 格式转换以及 ACT 策略推理。
+MCAP 数据录制、LeRobot 格式转换以及统一 LeRobot 策略推理（ACT / SmolVLA / Pi0 等）。
 运行环境：Ubuntu 24.04 / ROS 2 Jazzy / Python 3.12 / MuJoCo 3.3.7 / LeRobot 0.5.1。
 
 ## 功能包
@@ -14,7 +14,7 @@ MCAP 数据录制、LeRobot 格式转换以及 ACT 策略推理。
 | `so101_leader_bridge` | 通过串口采集实体 SO101 主臂数据，并应用标定 |
 | `teleop_retargeting` | SO101 直接关节映射，或固定桌面基准的 UR5e 绝对位姿重定向 |
 | `vla_dataset` | 录制界面与服务、回合元数据、数据格式转换 |
-| `robot_policy` | ACT 策略推理及复位界面 |
+| `robot_policy` | 统一 LeRobot 策略推理及复位界面 |
 | `robot_bringup` | 组合启动各节点，并预先检查配置 |
 
 原有的通用功能包 `so101_description`、`so101_mujoco_sim`、`so101_bringup`、
@@ -124,7 +124,7 @@ ros2 service call /sim/reset_task std_srvs/srv/Trigger '{}'
 ```text
 SO101 主臂 -> /leader/joint_states -> 重定向 --+
                                             +-> /robot/joint_targets -> 仿真
-ACT 策略（单独启动，不与遥操作同时运行）-------+
+LeRobot 策略（单独启动，不与遥操作同时运行）-------+
 仿真 -> /sim/joint_states（实际姿态）、/sim/action（已应用的关节目标）
 ```
 
@@ -163,17 +163,40 @@ ros2 run vla_dataset convert_mcap_to_lerobot \
 新录制回合同时包含机械臂元数据和完整相机 schema；旧格式回合不再兼容。
 导出结果包含 `meta/robot.json` 和 `meta/cameras.json`。请将机械臂元数据复制到
 训练检查点的 `config.json` 所在目录并保持文件名为 `robot.json`。
-ACT 会按照 `task_id` 动态订阅视觉输入，并校验状态、动作和相机特征。
+策略节点按检查点 `config.json` 的 `type` 字段加载对应的 LeRobot 策略
+（ACT、Diffusion、SmolVLA、Pi0 等），并按照 `task_id` 动态订阅视觉输入，
+校验状态、动作和相机特征与检查点一致。对需要语言指令的策略（SmolVLA / Pi0），
+**必须**用 `instruction:=` 传入与训练一致的指令文本——即训练所用数据集的
+`meta/tasks.parquet` 中 `task` 列文本（本项目为中文，如“拉开抽屉，把红色方块放进
+抽屉，再关上抽屉”）。默认为空时仅提示不报错，但空指令与训练分布不一致会显著变差。
+运行 SmolVLA / Pi0 还需在环境中额外安装其模型依赖（如 `transformers`、
+`torchvision` 等），ACT / Diffusion 不依赖这些。
 训练 UR5e 策略需要重新录制 UR5e 示范数据，不能直接使用现有 SO101 数据。
 
+SO101 ACT（使用默认检查点路径）：
+
 ```bash
-ros2 launch robot_bringup act_sim.launch.py \
-  task_id:=ur5e_red_cube_to_target \
+ros2 launch robot_bringup policy_sim.launch.py \
+  task_id:=red_blue_cubes_to_targets
+```
+
+UR5e ACT：
+
+```bash
+ros2 launch robot_bringup policy_sim.launch.py \
+  task_id:=ur5e_red_blue_cubes_to_targets \
   policy_path:=/absolute/path/to/ur5e/pretrained_model
 ```
 
-以上是命令模板，目前尚未训练 UR5e 模型检查点。
-使用旧 SO101 检查点时，应指定 `robot_id:=so101` 及对应任务。
+UR5e SmolVLA（语言条件策略，指令需与训练文本一致）：
+
+```bash
+ros2 launch robot_bringup policy_sim.launch.py \
+  task_id:=ur5e_red_blue_cubes_to_targets \
+  policy_path:=/absolute/path/to/smolvla/pretrained_model \
+  instruction:='把红色和蓝色方块分别放到对应颜色区域'
+```
+
 推理界面的复位功能会清空策略动作队列，并在下一轮开始前复位机械臂和任务。
 
 ## 扩展其他机械臂

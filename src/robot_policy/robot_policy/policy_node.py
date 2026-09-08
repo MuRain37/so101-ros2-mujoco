@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a task-compatible LeRobot ACT policy against the selected robot."""
+"""Run a task-configured LeRobot policy against the selected robot."""
 
 from pathlib import Path
 import json
@@ -7,8 +7,8 @@ import json
 import numpy as np
 import rclpy
 import torch
-from lerobot.policies.act.modeling_act import ACTPolicy
-from lerobot.policies.factory import make_pre_post_processors
+from lerobot.configs.policies import PreTrainedConfig
+from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 from lerobot.utils.control_utils import predict_action
 from mujoco_sim.camera import depth_training_image, rgb_image_array
 from mujoco_sim.tasks import create_task
@@ -18,6 +18,9 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState
 from std_srvs.srv import Trigger
 from robot_adapters import get_robot
+
+# Policies conditioned on a language instruction fed as observation["task"].
+_LANGUAGE_POLICY_TYPES = {"smolvla", "pi0", "pi05", "xvla", "groot"}
 
 
 def validate_policy(config, robot, policy_path, task):
@@ -44,6 +47,16 @@ def validate_policy(config, robot, policy_path, task):
             f"camera inputs {expected_images}"
         )
 
+    unsupported = [
+        key for key in config.input_features
+        if key != "observation.state" and not key.startswith("observation.images.")
+    ]
+    if unsupported:
+        raise ValueError(
+            f"policy inputs {unsupported} cannot be provided by this bridge "
+            f"(only observation.state and observation.images.* are available)"
+        )
+
     metadata = Path(policy_path) / "robot.json"
     if metadata.is_file():
         supplied = json.loads(metadata.read_text())
@@ -52,11 +65,11 @@ def validate_policy(config, robot, policy_path, task):
                 raise ValueError(f"policy robot metadata mismatch: {key}")
 
 
-class ACTPolicyNode(Node):
-    """Bridge task-configured MuJoCo observations to an ACT policy action."""
+class PolicyNode(Node):
+    """Bridge task-configured MuJoCo observations to a LeRobot policy action."""
 
     def __init__(self) -> None:
-        super().__init__("act_policy")
+        super().__init__("lerobot_policy")
         self.declare_parameter("policy_path", "")
         self.declare_parameter("task_id", "red_cube_to_red_target")
         self.declare_parameter("robot_id", "auto")
@@ -64,12 +77,14 @@ class ACTPolicyNode(Node):
         self.declare_parameter("inference_rate", 30.0)
         self.declare_parameter("state_topic", "/sim/joint_states")
         self.declare_parameter("command_topic", "/robot/joint_targets")
+        self.declare_parameter("instruction", "")
 
         self._task = create_task(str(self.get_parameter("task_id").value))
         self._robot = get_robot(
             self._task.resolve_robot(str(self.get_parameter("robot_id").value))
         )
         self._epoch = None
+        self._instruction = str(self.get_parameter("instruction").value)
         policy_path = Path(
             str(self.get_parameter("policy_path").value)
         ).expanduser()
@@ -80,12 +95,19 @@ class ACTPolicyNode(Node):
             raise RuntimeError("device is cuda but CUDA is unavailable")
         self._device = torch.device(device_name)
 
-        from lerobot.configs.policies import PreTrainedConfig
         config = PreTrainedConfig.from_pretrained(policy_path)
         validate_policy(config, self._robot, policy_path, self._task)
-        self._policy = ACTPolicy.from_pretrained(
-            policy_path, config=config
-        ).to(self._device)
+        try:
+            policy_cls = get_policy_class(config.type)
+            self._policy = policy_cls.from_pretrained(
+                policy_path, config=config
+            ).to(self._device)
+        except (ImportError, ModuleNotFoundError) as error:
+            raise RuntimeError(
+                f"loading a '{config.type}' policy needs extra LeRobot "
+                f"dependencies (e.g. transformers, torchvision, vllm); "
+                f"install them and retry: {error}"
+            ) from error
         self._preprocessor, self._postprocessor = make_pre_post_processors(
             policy_cfg=self._policy.config,
             pretrained_path=str(policy_path),
@@ -127,8 +149,14 @@ class ACTPolicyNode(Node):
         if rate <= 0:
             raise ValueError("inference_rate must be greater than zero")
         self.create_timer(1.0 / rate, self._infer)
+        if config.type in _LANGUAGE_POLICY_TYPES and not self._instruction:
+            self.get_logger().warning(
+                f"{config.type} policy is language-conditioned but no "
+                "instruction was provided; pass the training task text from "
+                "the dataset meta/tasks.parquet or the policy may misbehave"
+            )
         self.get_logger().info(
-            f"loaded ACT policy for {self._task.task_id} from "
+            f"loaded {config.type} policy for {self._task.task_id} from "
             f"{policy_path} on {device_name}"
         )
 
@@ -218,6 +246,7 @@ class ACTPolicyNode(Node):
             self._preprocessor,
             self._postprocessor,
             use_amp=False,
+            task=self._instruction,
             robot_type=self._robot.robot_id,
         ).squeeze(0).cpu().numpy()
         if action.shape != (len(self._robot.joint_names),) or not np.isfinite(action).all():
@@ -233,7 +262,7 @@ class ACTPolicyNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ACTPolicyNode()
+    node = PolicyNode()
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):

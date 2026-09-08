@@ -52,12 +52,13 @@ def generate_launch_description():
             DeclareLaunchArgument("task_id", default_value="red_blue_cubes_to_targets"),
             DeclareLaunchArgument("random_seed", default_value="-1"),
             DeclareLaunchArgument("policy_gui_enabled", default_value="true"),
+            DeclareLaunchArgument("instruction", default_value=""),
             OpaqueFunction(function=validate_task),
             simulation,
             Node(
                 package="robot_policy",
-                executable="act_policy",
-                name="act_policy",
+                executable="lerobot_policy",
+                name="lerobot_policy",
                 output="screen",
                 prefix=[str(project_root / ".venv/bin/python")],
                 parameters=[
@@ -67,6 +68,7 @@ def generate_launch_description():
                         "robot_id": LaunchConfiguration("robot_id"),
                         "device": LaunchConfiguration("device"),
                         "inference_rate": LaunchConfiguration("inference_rate"),
+                        "instruction": LaunchConfiguration("instruction"),
                     }
                 ],
             ),

@@ -1,4 +1,7 @@
 # Python dependencies for dataset conversion and future LeRobot training.
 lerobot==0.5.1
-huggingface-hub==0.35.3
+# SmolVLA / Pi0 等 VLM 策略依赖（等价于 lerobot[transformers-dep]）。
+transformers==5.3.0
+num2words
+huggingface-hub==1.30.0
 setuptools<80

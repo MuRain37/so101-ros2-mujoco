@@ -43,6 +43,7 @@ class MujocoSimulator(Node):
             "follower_workspace", "0.10 0.45 -0.25 0.25 0.015 0.35"
         )
         self.declare_parameter("gripper_open_fraction", 1.0)
+        self.declare_parameter("initial_joint_positions", "")
         self.declare_parameter("camera_enabled", True)
         self._cameras = (
             [MujocoCameraPublisher(self, spec) for spec in self._task.cameras]
@@ -195,6 +196,8 @@ class MujocoSimulator(Node):
             follower_workspace=parse_workspace(
                 self.get_parameter("follower_workspace").value
             ),
+            initial_joint_positions=[float(v) for v in
+                self.get_parameter("initial_joint_positions").value.split()] or None,
             gripper_open_fraction=float(
                 self.get_parameter("gripper_open_fraction").value
             ),

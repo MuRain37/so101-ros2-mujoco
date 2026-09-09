@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     entry_points={
         "console_scripts": [
-            "act_policy = robot_policy.act_node:main",
+            "policy_inference = robot_policy.policy_node:main",
             "robot_policy_gui = robot_policy.policy_gui:main",
         ],
     },

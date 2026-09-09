@@ -2,7 +2,7 @@
 <package format="3">
   <name>robot_policy</name>
   <version>0.1.0</version>
-  <description>LeRobot policy inference nodes for SO-101.</description>
+  <description>ACT, SmolVLA and PI0 inference for SO101 and UR5e.</description>
   <maintainer email="murain@example.com">murain</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_python</buildtool_depend>

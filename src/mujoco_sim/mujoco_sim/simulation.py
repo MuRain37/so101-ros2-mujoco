@@ -16,6 +16,7 @@ class MujocoSimulation:
         robot_id="auto",
         follower_workspace=(0.10, 0.45, -0.25, 0.25, 0.015, 0.35),
         gripper_open_fraction=1.0,
+        initial_joint_positions=None,
     ):
         import mujoco
         self._mujoco = mujoco
@@ -24,7 +25,11 @@ class MujocoSimulation:
         self.robot = get_robot(task.resolve_robot(robot_id)).bind(self.model)
         self._task, self._rng = task, rng
         self.reset_positions = np.array(self.robot.home, dtype=float)
-        if task.reset_source_robot_id is not None:
+        if initial_joint_positions is not None:
+            self.set_reset_positions(initial_joint_positions)
+            if not np.allclose(self.reset_positions, initial_joint_positions, rtol=0, atol=1e-8):
+                raise ValueError("initial pose exceeds robot joint limits")
+        elif task.reset_source_robot_id is not None:
             source = get_robot(task.reset_source_robot_id)
             mapper = PoseRetargeter(
                 load_robot_model(source),

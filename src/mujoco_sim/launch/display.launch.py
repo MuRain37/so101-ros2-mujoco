@@ -34,6 +34,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("robot_id", default_value="auto"),
+            DeclareLaunchArgument("initial_joint_positions", default_value=""),
             DeclareLaunchArgument(
                 "model_path",
                 default_value="",
@@ -87,6 +88,9 @@ def generate_launch_description():
                 parameters=[
                     {
                         "robot_id": LaunchConfiguration("robot_id"),
+                        "initial_joint_positions": ParameterValue(
+                            LaunchConfiguration("initial_joint_positions"), value_type=str
+                        ),
                         "model_path": LaunchConfiguration("model_path"),
                         "joint_state_topic": LaunchConfiguration("joint_state_topic"),
                         "realtime_factor": ParameterValue(

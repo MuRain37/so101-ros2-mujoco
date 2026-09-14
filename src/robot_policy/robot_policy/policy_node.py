@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a task-configured LeRobot policy against the selected robot."""
+"""Run a task-compatible LeRobot policy against the selected robot."""
 
 from pathlib import Path
 import json
@@ -18,9 +18,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image, JointState
 from std_srvs.srv import Trigger
 from robot_adapters import get_robot
-
-# Policies conditioned on a language instruction fed as observation["task"].
-_LANGUAGE_POLICY_TYPES = {"smolvla", "pi0", "pi05", "xvla", "groot"}
 
 
 def validate_policy(config, robot, policy_path, task):
@@ -47,16 +44,6 @@ def validate_policy(config, robot, policy_path, task):
             f"camera inputs {expected_images}"
         )
 
-    unsupported = [
-        key for key in config.input_features
-        if key != "observation.state" and not key.startswith("observation.images.")
-    ]
-    if unsupported:
-        raise ValueError(
-            f"policy inputs {unsupported} cannot be provided by this bridge "
-            f"(only observation.state and observation.images.* are available)"
-        )
-
     metadata = Path(policy_path) / "robot.json"
     if metadata.is_file():
         supplied = json.loads(metadata.read_text())
@@ -65,58 +52,81 @@ def validate_policy(config, robot, policy_path, task):
                 raise ValueError(f"policy robot metadata mismatch: {key}")
 
 
+def load_policy(policy_path, robot, task, device):
+    """Load one local LeRobot checkpoint and its saved processing pipelines."""
+    if not str(policy_path).strip():
+        raise ValueError("policy_path must name a local pretrained_model directory")
+    path = Path(policy_path).expanduser().resolve()
+    policy_type = "unknown"
+    try:
+        raw_config = json.loads((path / "config.json").read_text())
+        policy_type = raw_config.get("type")
+        if policy_type not in ("act", "smolvla", "pi0"):
+            raise ValueError(f"unsupported policy type {policy_type!r}; expected act, smolvla or pi0")
+        for name in ("model.safetensors", "policy_preprocessor.json", "policy_postprocessor.json"):
+            if not (path / name).is_file():
+                raise FileNotFoundError(f"missing checkpoint file: {name}")
+        device = torch.device(device)
+        if device.type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(f"requested device {device} but CUDA is unavailable")
+        config = PreTrainedConfig.from_pretrained(path)
+        config.device = str(device)
+        validate_policy(config, robot, path, task)
+        policy_class = get_policy_class(policy_type)
+        if policy_type == "pi0":
+            # PI0's override swallows weight-loading errors. Native LeRobot
+            # checkpoints need no OpenPI key remapping; use the strict base loader.
+            from lerobot.policies.pretrained import PreTrainedPolicy
+            policy = PreTrainedPolicy.from_pretrained.__func__(
+                policy_class, path, config=config, strict=True
+            )
+        else:
+            policy = policy_class.from_pretrained(path, config=config, strict=True)
+        policy.to(device)
+        policy.eval()
+        preprocessor, postprocessor = make_pre_post_processors(
+            policy_cfg=policy.config,
+            pretrained_path=str(path),
+            preprocessor_overrides={"device_processor": {"device": str(device)}},
+        )
+        return policy, preprocessor, postprocessor
+    except Exception as error:
+        raise RuntimeError(
+            f"failed to load {policy_type} policy at {path}: {error}. "
+            "Check checkpoint resources and install requirements.txt (LeRobot smolvla/pi extras)."
+        ) from error
+
+
 class PolicyNode(Node):
-    """Bridge task-configured MuJoCo observations to a LeRobot policy action."""
+    """Bridge task-configured MuJoCo observations to a policy action."""
 
     def __init__(self) -> None:
-        super().__init__("lerobot_policy")
+        super().__init__("policy_inference")
         self.declare_parameter("policy_path", "")
         self.declare_parameter("task_id", "red_cube_to_red_target")
         self.declare_parameter("robot_id", "auto")
         self.declare_parameter("device", "cuda")
+        self.declare_parameter("task_instruction", "")
         self.declare_parameter("inference_rate", 30.0)
         self.declare_parameter("state_topic", "/sim/joint_states")
         self.declare_parameter("command_topic", "/robot/joint_targets")
-        self.declare_parameter("instruction", "")
 
         self._task = create_task(str(self.get_parameter("task_id").value))
         self._robot = get_robot(
             self._task.resolve_robot(str(self.get_parameter("robot_id").value))
         )
         self._epoch = None
-        self._instruction = str(self.get_parameter("instruction").value)
-        policy_path = Path(
-            str(self.get_parameter("policy_path").value)
-        ).expanduser()
-        if not policy_path.is_dir():
-            raise FileNotFoundError(f"policy directory does not exist: {policy_path}")
+        policy_path = str(self.get_parameter("policy_path").value).strip()
         device_name = str(self.get_parameter("device").value)
-        if device_name == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError("device is cuda but CUDA is unavailable")
         self._device = torch.device(device_name)
-
-        config = PreTrainedConfig.from_pretrained(policy_path)
-        validate_policy(config, self._robot, policy_path, self._task)
-        self._use_amp = bool(config.use_amp)
-        try:
-            policy_cls = get_policy_class(config.type)
-            self._policy = policy_cls.from_pretrained(
-                policy_path, config=config
-            ).to(self._device)
-        except (ImportError, ModuleNotFoundError) as error:
-            raise RuntimeError(
-                f"loading a '{config.type}' policy needs extra LeRobot "
-                f"dependencies (e.g. transformers, torchvision, vllm); "
-                f"install them and retry: {error}"
-            ) from error
-        self._preprocessor, self._postprocessor = make_pre_post_processors(
-            policy_cfg=self._policy.config,
-            pretrained_path=str(policy_path),
-            preprocessor_overrides={
-                "device_processor": {"device": device_name}
-            },
+        self._instruction = (
+            str(self.get_parameter("task_instruction").value).strip()
+            or self._task.language_instruction
         )
-        self._policy.reset()
+        self._policy, self._preprocessor, self._postprocessor = load_policy(
+            policy_path, self._robot, self._task, self._device
+        )
+        self._reset_policy()
 
         self._images = {
             stream.observation_key: None
@@ -147,19 +157,18 @@ class PolicyNode(Node):
             Trigger, "/policy/reset_episode", self._on_reset_episode
         )
         rate = float(self.get_parameter("inference_rate").value)
-        if rate <= 0:
+        if not np.isfinite(rate) or rate <= 0:
             raise ValueError("inference_rate must be greater than zero")
         self.create_timer(1.0 / rate, self._infer)
-        if config.type in _LANGUAGE_POLICY_TYPES and not self._instruction:
-            self.get_logger().warning(
-                f"{config.type} policy is language-conditioned but no "
-                "instruction was provided; pass the training task text from "
-                "the dataset meta/tasks.parquet or the policy may misbehave"
-            )
         self.get_logger().info(
-            f"loaded {config.type} policy for {self._task.task_id} from "
+            f"loaded {self._policy.config.type} policy for {self._task.task_id} from "
             f"{policy_path} on {device_name}"
         )
+
+    def _reset_policy(self):
+        self._policy.reset()
+        self._preprocessor.reset()
+        self._postprocessor.reset()
 
     def _image_callback(self, key, modality, depth_range_m):
         def callback(message):
@@ -178,7 +187,7 @@ class PolicyNode(Node):
             return
         if self._epoch != message.header.frame_id:
             self._epoch = message.header.frame_id
-            self._policy.reset()
+            self._reset_policy()
             self._clear_observations()
         try:
             self._state = self._robot.ordered(
@@ -198,7 +207,7 @@ class PolicyNode(Node):
             response.message = "MuJoCo reset service is unavailable"
             return response
 
-        self._policy.reset()
+        self._reset_policy()
         self._clear_observations()
         self._reset_future = self._sim_reset_client.call_async(Trigger.Request())
         response.success = True
@@ -246,10 +255,10 @@ class PolicyNode(Node):
             self._device,
             self._preprocessor,
             self._postprocessor,
-            use_amp=self._use_amp,
+            use_amp=self._policy.config.use_amp,
             task=self._instruction,
             robot_type=self._robot.robot_id,
-        ).squeeze(0).cpu().numpy()
+        ).squeeze(0).float().cpu().numpy()
         if action.shape != (len(self._robot.joint_names),) or not np.isfinite(action).all():
             self.get_logger().error(f"invalid policy action: shape={action.shape}")
             return
@@ -263,13 +272,15 @@ class PolicyNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PolicyNode()
+    node = None
     try:
+        node = PolicyNode()
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 

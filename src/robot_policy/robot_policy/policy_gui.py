@@ -33,14 +33,14 @@ class PolicyControlWindow(QWidget):
         self._node = node
         self._future = None
 
-        self.setWindowTitle("SO-101 推理控制")
+        self.setWindowTitle("机器人推理控制")
         self.setMinimumWidth(360)
 
         self._status = QLabel("正在等待推理服务…")
         font = self._status.font()
         font.setBold(True)
         self._status.setFont(font)
-        self._detail = QLabel("重置后机械臂将归零，并随机放置任务物体。")
+        self._detail = QLabel("重置后机械臂和任务将恢复到初始状态。")
         self._detail.setWordWrap(True)
         self._reset_button = QPushButton("重置本轮")
         self._reset_button.setEnabled(False)
@@ -69,7 +69,7 @@ class PolicyControlWindow(QWidget):
         if self._future is not None or not self._reset_button.isEnabled():
             return
         self._status.setText("正在重置…")
-        self._detail.setText("正在清空 ACT 动作并重置仿真。")
+        self._detail.setText("正在清空策略动作并重置仿真。")
         self._reset_button.setEnabled(False)
         self._future = self._node.reset_client.call_async(Trigger.Request())
 

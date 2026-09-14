@@ -157,7 +157,7 @@ ros2 service call /sim/reset_task std_srvs/srv/Trigger '{}'
 ```text
 SO101 主臂 -> /leader/joint_states -> 重定向 --+
                                             +-> /robot/joint_targets -> 仿真
-LeRobot 策略（单独启动，不与遥操作同时运行）-------+
+策略推理（单独启动，不与遥操作同时运行）-------+
 仿真 -> /sim/joint_states（实际姿态）、/sim/action（已应用的关节目标）
 ```
 
@@ -196,42 +196,51 @@ ros2 run vla_dataset convert_mcap_to_lerobot \
 新录制回合同时包含机械臂元数据和完整相机 schema；旧格式回合不再兼容。
 导出结果包含 `meta/robot.json` 和 `meta/cameras.json`。请将机械臂元数据复制到
 训练检查点的 `config.json` 所在目录并保持文件名为 `robot.json`。
-策略节点按检查点 `config.json` 的 `type` 字段加载对应的 LeRobot 策略
-（ACT、Diffusion、SmolVLA、Pi0 等），并按照 `task_id` 动态订阅视觉输入，
-校验状态、动作和相机特征与检查点一致。对需要语言指令的策略（SmolVLA / Pi0），
-**必须**用 `instruction:=` 传入与训练一致的指令文本——即训练所用数据集的
-`meta/tasks.parquet` 中 `task` 列文本（本项目为中文，如“拉开抽屉，把红色方块放进
-抽屉，再关上抽屉”）。默认为空时仅提示不报错，但空指令与训练分布不一致会显著变差。
-运行 SmolVLA / Pi0 还需在环境中额外安装其模型依赖（如 `transformers`、
-`torchvision` 等），ACT / Diffusion 不依赖这些。
-推理时遵循 checkpoint 的 `use_amp` 配置，在 CUDA 上使用模型训练时指定的混合精度，
-减少 VLA 推理的显存占用和计算压力。
+统一入口根据本地 `pretrained_model/config.json` 的 `type` 自动识别 ACT、SmolVLA
+或 PI0，并按照 `task_id` 动态订阅视觉输入，校验状态、动作、相机和机器人元数据。
 训练 UR5e 策略需要重新录制 UR5e 示范数据，不能直接使用现有 SO101 数据。
-
-SO101 ACT（使用默认检查点路径）：
-
-```bash
-ros2 launch robot_bringup policy_sim.launch.py \
-  task_id:=red_blue_cubes_to_targets
-```
 
 UR5e ACT：
 
 ```bash
 ros2 launch robot_bringup policy_sim.launch.py \
   task_id:=ur5e_red_blue_cubes_to_targets \
-  policy_path:=/absolute/path/to/ur5e/pretrained_model
+  policy_path:="$PWD/outputs/train/act_ur5e_red_blue_cubes/checkpoints/050000/pretrained_model"
 ```
 
-UR5e SmolVLA（语言条件策略，指令需与训练文本一致）：
+UR5e SmolVLA：
 
 ```bash
 ros2 launch robot_bringup policy_sim.launch.py \
   task_id:=ur5e_red_blue_cubes_to_targets \
-  policy_path:=/absolute/path/to/smolvla/pretrained_model \
-  instruction:='把红色和蓝色方块分别放到对应颜色区域'
+  policy_path:="$PWD/outputs/train/smolvla_ur5e_red_blue_cubes/checkpoints/020000/pretrained_model"
 ```
 
+模型目录 `pretrained_model/` 可选放置 `initial_pose.json`。存在时，推理仿真启动与
+“重置本轮”使用文件中的关节姿态；不存在时保持任务原默认姿态。
+文件必填字段为 `robot_id`、`task_id`、`unit`（必须为 `rad`）、`joint_names` 和
+`positions`（一一对应，可调整顺序）。机器人/任务不匹配、无效数值、缺失/重复关节或
+超出关节范围会报错，不静默回退。可选 `source` 字段记录数据集、回合和帧号。
+
+本地 UR5e 红蓝分类和抽屉的 ACT、SmolVLA 检查点已各补充此文件，采用各自训练集
+第 0 回合、第 0 帧的实际 `observation.state`（含夹爪），不是逐关节中位数。
+这是已试验有效的准备姿态，不代表统计最优起点。复制模型时一并复制此文件；
+移走该文件即可恢复原默认姿态。LeRobot 后续新训练的检查点仍需另外添加此文件。
+
+SmolVLA 和 PI0 默认使用任务的语言描述，启动时可用 `task_instruction:="..."`
+覆盖。权重、`config.json`、保存的预处理/后处理配置和归一化统计必须完整；
+图像与外部关节维度必须匹配任务。内部图像缩放、文本分词和维度填充由 LeRobot
+处理，发布的动作仍为弧度制关节目标。PI0 仅支持 LeRobot 保存的原生检查点，
+不支持 OpenPI 原生权重、远端推理服务或未适配当前机械臂的基础模型。
+
+安装 `requirements.txt` 会包含 SmolVLA / PI0 的可选依赖。即使权重在本地，
+分词器或基础模型配置仍可能需要下载或事先缓存；缺少资源时会明确报错。
+`device` 默认 `cuda`，`inference_rate` 默认 30 Hz；使用检查点的混合精度配置。
+当前使用同步推理，新动作块生成时可能延迟 ROS 回调和复位响应，不保证达到
+30 Hz。复位会清空模型动作队列、处理器状态和观测。
+PI0 接口通过自动化测试覆盖，尚未使用真实 PI0 权重验证。
+
+使用旧 SO101 检查点时，应指定 `robot_id:=so101` 及对应任务。
 推理界面的复位功能会清空策略动作队列，并在下一轮开始前复位机械臂和任务。
 
 ## 扩展其他机械臂
@@ -265,3 +274,8 @@ python -m pytest tests -q
 固定使用的提交版本及各自的 BSD 许可证记录在
 `src/robot_description/mjcf/SOURCES.md` 和对应上游模型目录中。
 已有 SO101、D435 和 MetaWorld 资源的来源说明及许可证保留在相应资源目录中。
+
+## 报告文档
+
+- [RTX 4090 ACT 训练记录](docs/ACT_TRAINING_4090.md)
+- [SmolVLA 红蓝任务诊断](docs/SMOLVLA_RED_BLUE_DIAGNOSTICS.md)

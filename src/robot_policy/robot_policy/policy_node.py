@@ -97,6 +97,7 @@ class PolicyNode(Node):
 
         config = PreTrainedConfig.from_pretrained(policy_path)
         validate_policy(config, self._robot, policy_path, self._task)
+        self._use_amp = bool(config.use_amp)
         try:
             policy_cls = get_policy_class(config.type)
             self._policy = policy_cls.from_pretrained(
@@ -245,7 +246,7 @@ class PolicyNode(Node):
             self._device,
             self._preprocessor,
             self._postprocessor,
-            use_amp=False,
+            use_amp=self._use_amp,
             task=self._instruction,
             robot_type=self._robot.robot_id,
         ).squeeze(0).cpu().numpy()

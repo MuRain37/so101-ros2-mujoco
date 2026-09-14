@@ -1,8 +1,41 @@
-# ROS 2 + MuJoCo 机器人学习工作空间
+# ROS 2 + MuJoCo 多机器人模仿学习工作空间
 
-支持 SO101 和 UR5e + Robotiq 2F-85 仿真、SO101 主臂遥操作、
-MCAP 数据录制、LeRobot 格式转换以及统一 LeRobot 策略推理（ACT / SmolVLA / Pi0 等）。
+面向端到端机器人学习实验的 ROS 2 工作空间，覆盖 SO101 和 UR5e + Robotiq 2F-85
+仿真、实体主臂遥操作、MCAP 数据采集、LeRobot 数据转换，以及统一策略推理
+（ACT / SmolVLA / Pi0 等）。
 运行环境：Ubuntu 24.04 / ROS 2 Jazzy / Python 3.12 / MuJoCo 3.3.7 / LeRobot 0.5.1。
+
+## 推理演示
+
+以下 GIF 直接采集自 ROS 2 + MuJoCo 在线闭环推理，左上角为策略与任务，右下角为
+腕部相机；动作由模型实时输出，不包含脚本控制或后期轨迹编辑。
+
+### 红蓝方块分类
+
+| ACT | SmolVLA（语言条件） |
+| :---: | :---: |
+| ![ACT 控制 UR5e 完成红蓝方块分类](docs/media/act-color-sorting.gif) | ![SmolVLA 控制 UR5e 完成红蓝方块分类](docs/media/smolvla-color-sorting.gif) |
+
+### 抽屉操作
+
+| ACT | SmolVLA（语言条件） |
+| :---: | :---: |
+| ![ACT 控制 UR5e 打开抽屉、放入红块并关闭抽屉](docs/media/act-drawer.gif) | ![SmolVLA 控制 UR5e 打开抽屉、放入红块并关闭抽屉](docs/media/smolvla-drawer.gif) |
+
+四段展示均完成对应任务。分类成功标准为两个方块最终进入同色目标区域；抽屉任务
+成功标准为打开抽屉、放入红色方块并重新关闭。展示使用固定随机种子复现：分类任务
+ACT 为 42、SmolVLA 为 7，抽屉任务均为 11。
+
+## 项目亮点
+
+- **统一策略运行时**：从 checkpoint 的 `config.json` 自动识别策略类型，共用观测、
+  预后处理、动作校验和 reset 生命周期，无需为每种 LeRobot 策略复制 ROS 节点。
+- **多机器人与多任务**：SO101 与 UR5e 通过机器人适配器共享控制链路，任务独立声明
+  场景、相机、语言指令、复位逻辑和机器人绑定关系。
+- **完整数据闭环**：实体 SO101 主臂遥操作、双相机采集、MCAP 回合管理、LeRobot
+  转换和训练 checkpoint 推理均在同一工作空间内完成。
+- **运行时防护**：启动前校验机器人元数据、状态/动作维度和相机 schema；通过 epoch
+  隔离旧动作，并拒绝包含 `NaN`、`Inf` 或错误维度的策略输出。
 
 ## 功能包
 
@@ -171,6 +204,8 @@ ros2 run vla_dataset convert_mcap_to_lerobot \
 抽屉，再关上抽屉”）。默认为空时仅提示不报错，但空指令与训练分布不一致会显著变差。
 运行 SmolVLA / Pi0 还需在环境中额外安装其模型依赖（如 `transformers`、
 `torchvision` 等），ACT / Diffusion 不依赖这些。
+推理时遵循 checkpoint 的 `use_amp` 配置，在 CUDA 上使用模型训练时指定的混合精度，
+减少 VLA 推理的显存占用和计算压力。
 训练 UR5e 策略需要重新录制 UR5e 示范数据，不能直接使用现有 SO101 数据。
 
 SO101 ACT（使用默认检查点路径）：
@@ -219,6 +254,10 @@ python -m pytest tests -q
 
 测试使用临时生成的录制数据，不访问真实串口硬件，也不修改用户数据集或训练输出。
 正式采集示范数据前，还应手动验证实体主臂遥操作以及任务执行效果。
+
+推理演示由 `scripts/record_policy_demo.py` 直接订阅前置和腕部 RGB 话题生成 MP4，
+再使用 FFmpeg 裁剪和压缩为 README 中的 GIF；因此展示可以从实际策略 rollout 重现，
+无需桌面录屏工具。
 
 ## 模型来源与许可证
 

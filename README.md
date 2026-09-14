@@ -5,7 +5,17 @@
 （ACT / SmolVLA / Pi0 等）。
 运行环境：Ubuntu 24.04 / ROS 2 Jazzy / Python 3.12 / MuJoCo 3.3.7 / LeRobot 0.5.1。
 
-## 推理演示
+## 系统演示
+
+### 实体主臂遥操作
+
+![实体 SO101 主臂遥操作 MuJoCo UR5e 完成抽屉任务](docs/media/teleoperation-drawer.gif)
+
+实体 SO101 主臂通过串口接入 ROS 2，末端位姿实时重定向到 MuJoCo 中的 UR5e，
+完成打开抽屉、放入方块和关闭抽屉的操作。该演示展示遥操作与数据采集链路，
+不是模型自主推理。
+
+### 模型自主推理
 
 以下 GIF 直接采集自 ROS 2 + MuJoCo 在线闭环推理，左上角为策略与任务，右下角为
 腕部相机；动作由模型实时输出，不包含脚本控制或后期轨迹编辑。
